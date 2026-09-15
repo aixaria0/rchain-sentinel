@@ -23,7 +23,9 @@ pub struct CrossNodeAgreement { pub node_url: String, pub reachable: bool, pub f
 pub struct CrossNodeReport {
     pub target_count: usize, pub reachable_count: usize, pub evidence_count: usize, pub agreeing_nodes: usize,
     pub quorum_required: usize, pub quorum_observed: bool, pub agreement_ratio: f64,
-    pub common_finalized_height: Option<u64>, pub common_block_hash: Option<String>, pub height_agreement: bool, pub hash_agreement: bool, pub agreement: bool, pub status: String, pub observations: Vec<CrossNodeAgreement>,
+    pub common_finalized_height: Option<u64>, pub common_block_hash: Option<String>, pub height_agreement: bool, pub hash_agreement: bool,
+    pub missing_height_nodes: usize, pub missing_hash_nodes: usize, pub conflicting_nodes: usize,
+    pub agreement: bool, pub status: String, pub verification_basis: String, pub observations: Vec<CrossNodeAgreement>,
 }
 #[derive(Debug, Clone, Serialize)]
 pub enum VerificationStatus { Pass, Warn, Fail }
