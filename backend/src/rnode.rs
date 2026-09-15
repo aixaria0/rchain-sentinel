@@ -1,18 +1,10 @@
+use crate::models::NetworkStatus;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RNodeClient {
     client: Client,
     base_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NetworkStatus {
-    pub reachable: bool,
-    pub node_url: String,
-    pub latency_ms: Option<u128>,
-    pub error: Option<String>,
 }
 
 impl RNodeClient {
@@ -23,23 +15,24 @@ impl RNodeClient {
         }
     }
 
-    pub async fn check(&self) -> NetworkStatus {
+    pub async fn status(&self) -> NetworkStatus {
         let start = std::time::Instant::now();
-
         let url = format!("{}/status", self.base_url);
 
         match self.client.get(&url).send().await {
             Ok(response) => {
+                let http_status = response.status().as_u16();
                 let latency_ms = start.elapsed().as_millis();
 
                 NetworkStatus {
                     reachable: response.status().is_success(),
                     node_url: self.base_url.clone(),
                     latency_ms: Some(latency_ms),
+                    http_status: Some(http_status),
                     error: if response.status().is_success() {
                         None
                     } else {
-                        Some(format!("HTTP {}", response.status()))
+                        Some(format!("RNode returned HTTP {}", http_status))
                     },
                 }
             }
@@ -48,6 +41,7 @@ impl RNodeClient {
                 reachable: false,
                 node_url: self.base_url.clone(),
                 latency_ms: None,
+                http_status: None,
                 error: Some(error.to_string()),
             },
         }
