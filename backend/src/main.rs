@@ -5,7 +5,7 @@ mod models;
 mod rnode;
 mod verification;
 
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{extract::State, response::Html, routing::get, Json, Router};
 
 use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
@@ -21,6 +21,10 @@ use tower_http::cors::CorsLayer;
 struct AppState {
     rnode: Arc<RNodeClient>,
     rnode_urls: Arc<Vec<String>>,
+}
+
+async fn explorer() -> Html<&'static str> {
+    Html(include_str!("../console.html"))
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -86,6 +90,7 @@ async fn main() {
 
     let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls) };
     let app = Router::new()
+        .route("/", get(explorer))
         .route("/health", get(health))
         .route("/api/network/status", get(network_status))
         .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
