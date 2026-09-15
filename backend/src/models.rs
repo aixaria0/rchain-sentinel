@@ -61,12 +61,10 @@ impl RNodeObservation {
             Value::Object(map) => map.len(),
             _ => 0,
         });
-
         let (node_id, host, port) = match &status.node {
             Some(node) => (node.id.clone(), node.host.clone(), node.port),
             None => (None, None, None),
         };
-
         Self {
             node_id, host, port,
             network_id: status.network_id.clone(),
@@ -96,46 +94,13 @@ pub struct FinalizedBlockEvidence {
 
 impl FinalizedBlockEvidence {
     pub fn unavailable(error: impl Into<String>) -> Self {
-        Self {
-            available: false,
-            raw: None,
-            payload_sha256: None,
-            block_hash: None,
-            parent_hash: None,
-            proposer: None,
-            signature: None,
-            justification_present: false,
-            error: Some(error.into()),
-        }
+        Self { available: false, raw: None, payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, error: Some(error.into()) }
     }
-
     pub fn available(raw: Value) -> Self {
-        Self {
-            available: true,
-            raw: Some(raw),
-            payload_sha256: None,
-            block_hash: None,
-            parent_hash: None,
-            proposer: None,
-            signature: None,
-            justification_present: false,
-            error: None,
-        }
+        Self { available: true, raw: Some(raw), payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, error: None }
     }
-
-    pub fn with_sha256(mut self, digest: String) -> Self {
-        self.payload_sha256 = Some(digest);
-        self
-    }
-
-    pub fn with_block_fields(
-        mut self,
-        block_hash: Option<String>,
-        parent_hash: Option<String>,
-        proposer: Option<String>,
-        signature: Option<String>,
-        justification_present: bool,
-    ) -> Self {
+    pub fn with_sha256(mut self, digest: String) -> Self { self.payload_sha256 = Some(digest); self }
+    pub fn with_block_fields(mut self, block_hash: Option<String>, parent_hash: Option<String>, proposer: Option<String>, signature: Option<String>, justification_present: bool) -> Self {
         self.block_hash = block_hash;
         self.parent_hash = parent_hash;
         self.proposer = proposer;
@@ -151,6 +116,9 @@ pub struct CrossNodeAgreement {
     pub reachable: bool,
     pub finalized_height: Option<u64>,
     pub block_hash: Option<String>,
+    pub payload_sha256: Option<String>,
+    pub proposer: Option<String>,
+    pub signature_present: bool,
     pub justification_present: bool,
 }
 
@@ -158,47 +126,28 @@ pub struct CrossNodeAgreement {
 pub struct CrossNodeReport {
     pub target_count: usize,
     pub reachable_count: usize,
+    pub evidence_count: usize,
     pub agreeing_nodes: usize,
     pub common_finalized_height: Option<u64>,
+    pub common_block_hash: Option<String>,
+    pub height_agreement: bool,
+    pub hash_agreement: bool,
     pub agreement: bool,
     pub status: String,
     pub observations: Vec<CrossNodeAgreement>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum VerificationStatus {
-    Pass,
-    Warn,
-    Fail,
-}
+pub enum VerificationStatus { Pass, Warn, Fail }
 
 #[derive(Debug, Clone, Serialize)]
-pub enum CheckSeverity {
-    Info,
-    Warning,
-    Critical,
-}
+pub enum CheckSeverity { Info, Warning, Critical }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct VerificationEvidence {
-    pub source: String,
-    pub field: String,
-    pub value: String,
-}
+pub struct VerificationEvidence { pub source: String, pub field: String, pub value: String }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct VerificationCheck {
-    pub name: String,
-    pub status: VerificationStatus,
-    pub message: String,
-    pub severity: CheckSeverity,
-    pub evidence: Vec<VerificationEvidence>,
-}
+pub struct VerificationCheck { pub name: String, pub status: VerificationStatus, pub message: String, pub severity: CheckSeverity, pub evidence: Vec<VerificationEvidence> }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct VerificationReport {
-    pub target: String,
-    pub status: VerificationStatus,
-    pub checks: Vec<VerificationCheck>,
-    pub evidence_count: usize,
-}
+pub struct VerificationReport { pub target: String, pub status: VerificationStatus, pub checks: Vec<VerificationCheck>, pub evidence_count: usize }
