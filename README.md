@@ -7,11 +7,15 @@
 <p align="center">Observe. Cross-check. Verify. Explain.</p>
 
 <p align="center">
+  <a href="https://aixaria0.github.io/rchain-sentinel/"><strong>🚀 Open Sentinel Showcase UI</strong></a>
+  &nbsp;·&nbsp;
   <a href="https://github.com/aixaria0/rchain-sentinel/actions"><img src="https://img.shields.io/github/actions/workflow/status/aixaria0/rchain-sentinel/ci.yml?label=CI&logo=github" alt="CI"></a>
   <img src="https://img.shields.io/badge/Rust-2021-orange?logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/Axum-0.7-black?logo=rust" alt="Axum">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License">
 </p>
+
+> **Showcase:** The public UI runs as an explicitly labeled offline demo when no RNode is connected. It never presents synthetic data as live chain evidence.
 
 ## Overview
 
@@ -109,7 +113,7 @@ RCHAIN_RNODE_URL=http://localhost:40403
 Multi-node mode:
 
 ```bash
-RCHAIN_RNODE_URL=http://node-a:40403,http://node-b:40403,http://node-c:40403
+RCHAIN_RNODE_URLS=http://node-a:40403,http://node-b:40403,http://node-c:40403
 ```
 
 `RCHAIN_RNODE_URLS` controls the cross-node verification targets. If it is not set, Sentinel falls back to the single `RCHAIN_RNODE_URL` target.
@@ -120,9 +124,11 @@ The Sentinel HTTP service listens on `PORT` when provided by the deployment plat
 
 The repository includes a production-oriented `Dockerfile` and `render.yaml` for a public container deployment. Connect this repository to a container-capable host such as Render and deploy the service using the included manifest.
 
-A deployment with no RNode configured is still useful as a showcase: `/` presents the Sentinel interface in clearly labeled **DEMO DATA / SHOWCASE** mode. Configure `RCHAIN_RNODE_URL` or `RCHAIN_RNODE_URLS` later to switch automatically to live evidence whenever the configured RNode(s) are reachable.
+For a zero-configuration visual showcase, the repository also deploys `backend/console.html` to GitHub Pages. The showcase is intentionally static and uses clearly labeled synthetic demo data because GitHub Pages does not run the Rust backend.
 
-The GitHub repository itself stores the application and deployment configuration; it does not by itself execute the Rust service or create a public runtime URL.
+**Public Showcase UI:** https://aixaria0.github.io/rchain-sentinel/
+
+A container deployment with no RNode configured is also useful as a showcase: `/` presents the Sentinel interface in clearly labeled **DEMO DATA / SHOWCASE** mode. Configure `RCHAIN_RNODE_URL` or `RCHAIN_RNODE_URLS` later to switch automatically to live evidence whenever the configured RNode(s) are reachable.
 
 ## Explorer integration direction
 
@@ -235,6 +241,7 @@ The long-term objective is a verification layer that can answer not only what st
 - Explicit offline showcase mode
 - Container deployment configuration
 - Deployment-platform manifest
+- GitHub Pages showcase deployment
 - CI-backed Rust tests
 
 ### Next
@@ -250,6 +257,12 @@ The long-term objective is a verification layer that can answer not only what st
 ## Project status
 
 Early development, with the verification architecture actively evolving toward protocol-aware evidence and an explorer-facing verification layer rather than simple node monitoring.
+
+## Author
+
+**AixAria** — Architect
+
+Built for evidence-driven verification of decentralized infrastructure.
 
 ## License
 
