@@ -1,0 +1,207 @@
+name: Bootstrap RChain Sentinel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Create project structure
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p backend/src
+          mkdir -p frontend/src
+          mkdir -p rholang
+          mkdir -p tests
+          mkdir -p docs
+
+          cat > backend/src/rnode.rs <<'EOF'
+          use reqwest::Client;
+          use serde::{Deserialize, Serialize};
+
+          #[derive(Debug, Clone)]
+          pub struct RNodeClient {
+              client: Client,
+              base_url: String,
+          }
+
+          #[derive(Debug, Serialize, Deserialize)]
+          pub struct NetworkStatus {
+              pub reachable: bool,
+              pub node_url: String,
+              pub latency_ms: Option<u128>,
+              pub error: Option<String>,
+          }
+
+          impl RNodeClient {
+              pub fn new(base_url: impl Into<String>) -> Self {
+                  Self {
+                      client: Client::new(),
+                      base_url: base_url.into().trim_end_matches('/').to_string(),
+                  }
+              }
+
+              pub async fn check(&self) -> NetworkStatus {
+                  let start = std::time::Instant::now();
+
+                  let url = format!("{}/status", self.base_url);
+
+                  match self.client.get(&url).send().await {
+                      Ok(response) => {
+                          let latency_ms = start.elapsed().as_millis();
+
+                          NetworkStatus {
+                              reachable: response.status().is_success(),
+                              node_url: self.base_url.clone(),
+                              latency_ms: Some(latency_ms),
+                              error: if response.status().is_success() {
+                                  None
+                              } else {
+                                  Some(format!("HTTP {}", response.status()))
+                              },
+                          }
+                      }
+
+                      Err(error) => NetworkStatus {
+                          reachable: false,
+                          node_url: self.base_url.clone(),
+                          latency_ms: None,
+                          error: Some(error.to_string()),
+                      },
+                  }
+              }
+          }
+          EOF
+
+          cat > backend/src/main.rs <<'EOF'
+          mod rnode;
+
+          use axum::{
+              extract::State,
+              routing::get,
+              Json,
+              Router,
+          };
+
+          use rnode::{NetworkStatus, RNodeClient};
+
+          use serde::Serialize;
+          use std::sync::Arc;
+          use tower_http::cors::CorsLayer;
+
+          #[derive(Clone)]
+          struct AppState {
+              rnode: Arc<RNodeClient>,
+          }
+
+          #[derive(Serialize)]
+          struct HealthResponse {
+              status: &'static str,
+              service: &'static str,
+              version: &'static str,
+          }
+
+          async fn health() -> Json<HealthResponse> {
+              Json(HealthResponse {
+                  status: "ok",
+                  service: "rchain-sentinel",
+                  version: "0.1.0",
+              })
+          }
+
+          async fn network_status(
+              State(state): State<AppState>,
+          ) -> Json<NetworkStatus> {
+              Json(state.rnode.check().await)
+          }
+
+          #[tokio::main]
+          async fn main() {
+              tracing_subscriber::fmt::init();
+
+              let rnode_url = std::env::var("RCHAIN_RNODE_URL")
+                  .unwrap_or_else(|_| {
+                      "http://localhost:40403".to_string()
+                  });
+
+              let state = AppState {
+                  rnode: Arc::new(RNodeClient::new(rnode_url)),
+              };
+
+              let app = Router::new()
+                  .route("/health", get(health))
+                  .route(
+                      "/api/network/status",
+                      get(network_status),
+                  )
+                  .with_state(state)
+                  .layer(CorsLayer::permissive());
+
+              let address = "0.0.0.0:8080";
+
+              println!(
+                  "RChain Sentinel backend listening on {}",
+                  address
+              );
+
+              let listener =
+                  tokio::net::TcpListener::bind(address)
+                      .await
+                      .expect("failed to bind server");
+
+              axum::serve(listener, app)
+                  .await
+                  .expect("server failed");
+          }
+          EOF
+
+          cat > backend/Cargo.toml <<'EOF'
+          [package]
+          name = "rchain-sentinel-backend"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          axum = "0.8"
+          tokio = { version = "1", features = ["full"] }
+          serde = { version = "1", features = ["derive"] }
+          serde_json = "1"
+          reqwest = { version = "0.12", features = ["json"] }
+          tower-http = { version = "0.6", features = ["cors"] }
+          tracing = "0.1"
+          tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+          EOF
+
+      - name: Verify Rust project
+        working-directory: backend
+        run: |
+          cargo check
+
+      - name: Commit generated project
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add backend
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: bootstrap RChain Sentinel backend"
+          git push
