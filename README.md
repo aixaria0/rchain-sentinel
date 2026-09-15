@@ -4,408 +4,187 @@
   <strong>Evidence-based verification for decentralized infrastructure.</strong>
 </p>
 
-<p align="center">
-  Observe. Cross-check. Verify.
-</p>
+<p align="center">Observe. Cross-check. Verify. Explain.</p>
 
 <p align="center">
-  <a href="https://github.com/aixaria0/rchain-sentinel/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/aixaria0/rchain-sentinel/ci.yml?label=CI&logo=github" alt="CI">
-  </a>
+  <a href="https://github.com/aixaria0/rchain-sentinel/actions"><img src="https://img.shields.io/github/actions/workflow/status/aixaria0/rchain-sentinel/ci.yml?label=CI&logo=github" alt="CI"></a>
   <img src="https://img.shields.io/badge/Rust-2021-orange?logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/Axum-0.7-black?logo=rust" alt="Axum">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License">
 </p>
 
----
-
 ## Overview
 
-**RChain Sentinel** is an independent verification service for RChain-compatible infrastructure.
+RChain Sentinel is an independent verification service for RChain-compatible infrastructure. It is designed around one principle:
 
-Sentinel is designed around a simple principle:
+> Don't just ask whether a node is alive. Ask whether independently observed evidence supports what the node claims.
 
-> **Don't just ask whether a node is alive. Ask whether the evidence supports what the node claims.**
+Sentinel collects RNode state and finalized-block evidence, preserves the observed payload, cross-checks multiple nodes, and produces explicit machine-readable verification results.
 
-Instead of reducing node state to a single health signal, Sentinel collects structured observations from RNode endpoints and evaluates them through a dedicated verification engine.
+The system is intentionally conservative: node-count agreement is never presented as stake-weighted Casper finality. Casper-shaped evidence is reported separately until the exact protocol schema and validator/stake semantics are pinned to the target RNode implementation.
 
-The result is an explicit, machine-readable verification report.
-
----
-
-## Verification Pipeline
+## Verification pipeline
 
 ```text
-                         RNode
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-        /api/status        /api/last-finalized-block
-              │                         │
-              ▼                         ▼
-       NetworkStatus          FinalizedBlockEvidence
-              │                         │
-              └────────────┬────────────┘
-                           ▼
-                  Verification Engine
-                           │
-                           ▼
-                  Verification Report
+RNode
+  ├── /api/status
+  └── /api/last-finalized-block
+          │
+          ▼
+   Evidence collection
+          │
+     ┌────┴─────┐
+     ▼          ▼
+Node checks   Block checks
+     │          │
+     └────┬─────┘
+          ▼
+ Cross-node analysis
+          │
+          ▼
+ Casper evidence inventory
+          │
+          ▼
+ PASS / WARN / FAIL + evidence
+```
 
+## Current capabilities
 
----
+Sentinel currently provides:
 
-What Sentinel Verifies
+- RNode reachability, HTTP status, latency, readiness, validator/read-only state, peers, epoch, network and shard identity.
+- Finalized-block evidence collection with an SHA-256 fingerprint of the exact JSON payload observed by Sentinel.
+- Cross-checking of finalized height and block hash across configured RNodes.
+- Concurrent cross-node observation using Tokio/Futures.
+- Observed 2/3 node-count quorum calculation with conflict and missing-evidence reporting.
+- Block evidence checks for block hash, parent hash, proposer, signature and justification-shaped fields.
+- A separate Casper evidence inventory for validator, stake/weight, bet/belief, justification and possible equivocation-shaped fields.
+- Deterministic verification output rather than a single opaque health signal.
 
-The current verification engine evaluates evidence including:
+Important: the payload SHA-256 is an integrity fingerprint of the observed JSON. It is not the RChain block hash and is not itself proof of finality. Likewise, recognized Casper-shaped fields are evidence inventory only; they do not establish Casper finality without protocol-level validation.
 
-Node reachability
+## API
 
-HTTP response status
+`GET /health` — Sentinel service health.
 
-Probe integrity
+`GET /api/network/status` — current RNode observation.
 
-Node identity
+`GET /api/evidence/last-finalized-block` — raw finalized-block evidence plus extracted fields and payload fingerprint.
 
-Network identity
+`GET /api/verify` — combined network and finalized-block verification report.
 
-Shard identity
+`GET /api/verify/block` — finalized-block evidence verification report.
 
-Node readiness
+`GET /api/verify/casper` — Casper-shaped evidence inventory. This endpoint explicitly avoids claiming stake-weighted finality.
 
-Validator state
+`GET /api/verify/cross-node` — concurrent cross-node finalized-block agreement analysis.
 
-Peer state
+## Configuration
 
-Current epoch
+Single-node mode:
 
-Finalized block state
-
-Finalized block evidence availability
-
-Observation integrity
-
-
-Each verification check produces an explicit state:
-
-PASS
-WARN
-FAIL
-
-
----
-
-API
-
-Health
-
-GET /health
-
-Returns the health and service metadata of Sentinel.
-
-Network Status
-
-GET /api/network/status
-
-Queries the configured RNode and returns the observed network and node state.
-
-Verification
-
-GET /api/verify
-
-Collects current RNode observations and runs the verification engine.
-
-The verification endpoint combines:
-
-/api/status
-        +
-/api/last-finalized-block
-        ↓
-Verification Engine
-        ↓
-Verification Report
-
-
----
-
-Example Verification Report
-
-{
-  "target": "http://localhost:40403",
-  "status": "Pass",
-  "checks": [
-    {
-      "name": "node_reachable",
-      "status": "Pass",
-      "message": "Node responded to the verification probe."
-    },
-    {
-      "name": "node_readiness",
-      "status": "Pass",
-      "message": "RNode reports itself as ready."
-    }
-  ]
-}
-
-
----
-
-Architecture
-
-rchain-sentinel/
-│
-├── backend/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── models.rs
-│       ├── rnode.rs
-│       └── verification.rs
-│
-├── docs/
-│   └── index.html
-│
-├── README.md
-└── LICENSE
-
-RNodeClient
-
-Handles communication with the RNode HTTP API and collects raw network observations.
-
-Models
-
-Defines structured representations for:
-
-Node status
-
-Network observations
-
-Finalized-block evidence
-
-Verification checks
-
-Verification reports
-
-
-VerificationEngine
-
-Evaluates collected evidence and converts observations into structured verification results.
-
-HTTP Service
-
-Exposes Sentinel through a lightweight Axum REST API.
-
-
----
-
-Evidence-First Design
-
-Traditional node monitoring often reduces infrastructure state to:
-
-ONLINE
-OFFLINE
-
-Sentinel is designed to preserve the evidence behind the decision.
-
-Instead of:
-
-Node: ONLINE
-
-the system can reason about:
-
-Reachability
-Network identity
-Validator state
-Readiness
-Peer state
-Finalized block
-Evidence availability
-Observation integrity
-
-This makes verification results inspectable rather than opaque.
-
-
----
-
-Configuration
-
-Sentinel accepts the RNode endpoint through:
-
-RCHAIN_RNODE_URL
-
-Example:
-
+```bash
 RCHAIN_RNODE_URL=http://localhost:40403
+```
 
-If the variable is not configured, Sentinel defaults to:
+Multi-node mode:
 
-http://localhost:40403
+```bash
+RCHAIN_RNODE_URL=http://localhost:40403
+RCHAIN_RNODE_URLS=http://node-a:40403,http://node-b:40403,http://node-c:40403
+```
 
-The Sentinel HTTP service listens on:
+`RCHAIN_RNODE_URLS` controls the cross-node verification targets. If it is not set, Sentinel falls back to the single `RCHAIN_RNODE_URL` target.
 
-0.0.0.0:8080
+The Sentinel HTTP service listens on `0.0.0.0:8080`.
 
+## Architecture
 
----
+```text
+backend/src/
+├── main.rs
+├── models.rs
+├── rnode.rs
+├── verification.rs
+├── block_verification.rs
+├── cross_node.rs
+└── casper_evidence.rs
+```
 
-Running Locally
+`RNodeClient` communicates with RNode and preserves raw observations.
 
-From the backend directory:
+`VerificationEngine` evaluates node and network consistency.
 
+`BlockVerificationEngine` evaluates finalized-block evidence without conflating payload integrity with protocol finality.
+
+`CrossNodeVerificationEngine` concurrently compares observations and reports agreement, divergence, missing evidence and an observed node-count quorum.
+
+`CasperEvidenceEngine` inventories protocol-shaped evidence while deliberately stopping short of an unsupported finality claim.
+
+## Running locally
+
+From `backend/`:
+
+```bash
 cargo run
+```
 
-Then query the service:
+For tests:
 
-GET http://localhost:8080/health
-GET http://localhost:8080/api/network/status
-GET http://localhost:8080/api/verify
+```bash
+cargo test
+```
 
+## Design direction
 
----
-
-Technology
-
-Built with:
-
-Rust
-
-Tokio
-
-Axum
-
-Reqwest
-
-Serde
-
-GitHub Actions
-
-
-The system is intentionally lightweight at the service layer so that deeper verification logic can evolve independently.
-
-
----
-
-Roadmap
-
-Phase 1 — Observation
-
-[x] RNode connectivity
-
-[x] Structured RNode status observation
-
-[x] Node identity
-
-[x] Network identity
-
-[x] Shard identity
-
-[x] Validator state
-
-[x] Readiness state
-
-[x] Peer observation
-
-[x] Epoch observation
-
-
-Phase 2 — Evidence Verification
-
-[x] Finalized-block endpoint integration
-
-[x] Finalized-block evidence model
-
-[x] Evidence-aware verification engine
-
-[ ] Cross-check finalized block height
-
-[ ] Cross-check finalized block hash
-
-[ ] Detect contradictory node evidence
-
-
-Phase 3 — Multi-Node Verification
-
-[ ] Multiple RNode targets
-
-[ ] Cross-node observation
-
-[ ] Finality agreement analysis
-
-[ ] Divergence detection
-
-[ ] Inconsistent-state detection
-
-
-Phase 4 — Cryptographic Verification
-
-[ ] Block integrity verification
-
-[ ] Signature verification
-
-[ ] Cryptographic evidence validation
-
-[ ] Trust-minimized verification paths
-
-
-Phase 5 — Sentinel Console
-
-[ ] Live verification console
-
-[ ] Evidence timeline
-
-[ ] Verification history
-
-[ ] Node comparison
-
-[ ] Machine-readable verification exports
-
-
-
----
-
-Design Direction
-
-Sentinel is intended to evolve from node observation into a verification layer for decentralized infrastructure.
-
-The architectural direction is:
-
+```text
 Observe
    ↓
 Collect Evidence
    ↓
 Cross-Check
    ↓
+Analyze Protocol Evidence
+   ↓
 Verify
    ↓
 Explain
+```
 
-The long-term objective is not merely to display network state, but to determine whether independently observable evidence is consistent with the state being claimed.
+The long-term objective is a verification layer that can answer not only what state an RNode reports, but why that state should be trusted, using independently observable protocol evidence.
 
+A future integration target is a block-explorer workflow where a block can be inspected together with the evidence supporting its claimed finality.
 
----
+## Roadmap
 
-Project Status
+### Completed
 
-Early development
+- RNode observation
+- Structured evidence collection
+- Finalized-block integration
+- Block evidence verification
+- Cross-node verification
+- Concurrent cross-node analysis
+- Observed quorum calculation
+- Conflict detection
+- Casper evidence inventory
+- Deterministic verification reporting
+- CI-backed Rust tests
 
-The current implementation provides:
+### Next
 
-RNode observation
+- Pin the exact RChain/RNode Casper response schema.
+- Parse validator identities and stake weights from authoritative protocol data.
+- Parse propositions/bets and justification graphs from authoritative protocol data.
+- Detect equivocation using protocol-defined evidence rather than heuristic field names.
+- Compute stake-weighted agreement only from an authenticated validator/stake set.
+- Add historical evidence and block-by-block verification.
+- Build the live Sentinel console / explorer integration.
 
-Structured evidence collection
+## Project status
 
-Evidence-aware verification
+Early development, with the verification architecture actively evolving toward protocol-aware evidence rather than simple node monitoring.
 
-REST endpoints
-
-Deterministic PASS / WARN / FAIL reporting
-
-
-The next major verification milestone is cross-validating finalized-block claims against independently retrieved block evidence.
-
-
----
-
-License
+## License
 
 Apache License 2.0
