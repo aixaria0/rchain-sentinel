@@ -86,6 +86,11 @@ pub struct FinalizedBlockEvidence {
     pub available: bool,
     pub raw: Option<Value>,
     pub payload_sha256: Option<String>,
+    pub block_hash: Option<String>,
+    pub parent_hash: Option<String>,
+    pub proposer: Option<String>,
+    pub signature: Option<String>,
+    pub justification_present: bool,
     pub error: Option<String>,
 }
 
@@ -95,6 +100,11 @@ impl FinalizedBlockEvidence {
             available: false,
             raw: None,
             payload_sha256: None,
+            block_hash: None,
+            parent_hash: None,
+            proposer: None,
+            signature: None,
+            justification_present: false,
             error: Some(error.into()),
         }
     }
@@ -104,12 +114,33 @@ impl FinalizedBlockEvidence {
             available: true,
             raw: Some(raw),
             payload_sha256: None,
+            block_hash: None,
+            parent_hash: None,
+            proposer: None,
+            signature: None,
+            justification_present: false,
             error: None,
         }
     }
 
     pub fn with_sha256(mut self, digest: String) -> Self {
         self.payload_sha256 = Some(digest);
+        self
+    }
+
+    pub fn with_block_fields(
+        mut self,
+        block_hash: Option<String>,
+        parent_hash: Option<String>,
+        proposer: Option<String>,
+        signature: Option<String>,
+        justification_present: bool,
+    ) -> Self {
+        self.block_hash = block_hash;
+        self.parent_hash = parent_hash;
+        self.proposer = proposer;
+        self.signature = signature;
+        self.justification_present = justification_present;
         self
     }
 }
