@@ -13,5 +13,6 @@ pub struct NetworkStatus {
     pub node_url: String,
     pub latency_ms: Option<u128>,
     pub http_status: Option<u16>,
+    pub probe: String,
     pub error: Option<String>,
 }
