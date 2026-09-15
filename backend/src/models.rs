@@ -21,44 +21,22 @@ pub struct NetworkStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RNodeStatusPayload {
-    #[serde(default)]
-    pub node: Option<RNodeIdentity>,
-
-    #[serde(default)]
-    pub network_id: Option<String>,
-
-    #[serde(default)]
-    pub shard_id: Option<String>,
-
-    #[serde(default)]
-    pub peers: Option<Value>,
-
-    #[serde(default)]
-    pub last_finalized_block_number: Option<u64>,
-
-    #[serde(default)]
-    pub validator: Option<bool>,
-
-    #[serde(default)]
-    pub read_only: Option<bool>,
-
-    #[serde(default)]
-    pub ready: Option<bool>,
-
-    #[serde(default)]
-    pub current_epoch: Option<u64>,
+    #[serde(default)] pub node: Option<RNodeIdentity>,
+    #[serde(default)] pub network_id: Option<String>,
+    #[serde(default)] pub shard_id: Option<String>,
+    #[serde(default)] pub peers: Option<Value>,
+    #[serde(default)] pub last_finalized_block_number: Option<u64>,
+    #[serde(default)] pub validator: Option<bool>,
+    #[serde(default)] pub read_only: Option<bool>,
+    #[serde(default)] pub ready: Option<bool>,
+    #[serde(default)] pub current_epoch: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RNodeIdentity {
-    #[serde(default)]
-    pub id: Option<String>,
-
-    #[serde(default)]
-    pub host: Option<String>,
-
-    #[serde(default)]
-    pub port: Option<u16>,
+    #[serde(default)] pub id: Option<String>,
+    #[serde(default)] pub host: Option<String>,
+    #[serde(default)] pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,18 +63,12 @@ impl RNodeObservation {
         });
 
         let (node_id, host, port) = match &status.node {
-            Some(node) => (
-                node.id.clone(),
-                node.host.clone(),
-                node.port,
-            ),
+            Some(node) => (node.id.clone(), node.host.clone(), node.port),
             None => (None, None, None),
         };
 
         Self {
-            node_id,
-            host,
-            port,
+            node_id, host, port,
             network_id: status.network_id.clone(),
             shard_id: status.shard_id.clone(),
             ready: status.ready,
@@ -118,19 +90,11 @@ pub struct FinalizedBlockEvidence {
 
 impl FinalizedBlockEvidence {
     pub fn unavailable(error: impl Into<String>) -> Self {
-        Self {
-            available: false,
-            raw: None,
-            error: Some(error.into()),
-        }
+        Self { available: false, raw: None, error: Some(error.into()) }
     }
 
     pub fn available(raw: Value) -> Self {
-        Self {
-            available: true,
-            raw: Some(raw),
-            error: None,
-        }
+        Self { available: true, raw: Some(raw), error: None }
     }
 }
 
@@ -142,10 +106,26 @@ pub enum VerificationStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub enum CheckSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationEvidence {
+    pub source: String,
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct VerificationCheck {
     pub name: String,
     pub status: VerificationStatus,
     pub message: String,
+    pub severity: CheckSeverity,
+    pub evidence: Vec<VerificationEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -153,4 +133,5 @@ pub struct VerificationReport {
     pub target: String,
     pub status: VerificationStatus,
     pub checks: Vec<VerificationCheck>,
+    pub evidence_count: usize,
 }
