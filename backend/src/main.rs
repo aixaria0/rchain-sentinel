@@ -11,6 +11,7 @@ use axum::{
 };
 
 use models::{
+    FinalizedBlockEvidence,
     HealthResponse,
     NetworkStatus,
     VerificationReport,
@@ -44,10 +45,31 @@ async fn network_status(
 async fn verify_network(
     State(state): State<AppState>,
 ) -> Json<VerificationReport> {
-    let network_status = state.rnode.status().await;
+    let network_status =
+        state.rnode.status().await;
+
+    let finalized_block =
+        match state
+            .rnode
+            .fetch_last_finalized_block()
+            .await
+        {
+            Ok(raw) => {
+                FinalizedBlockEvidence::available(raw)
+            }
+
+            Err(error) => {
+                FinalizedBlockEvidence::unavailable(
+                    error
+                )
+            }
+        };
 
     let report =
-        VerificationEngine::verify_network(&network_status);
+        VerificationEngine::verify_network(
+            &network_status,
+            &finalized_block,
+        );
 
     Json(report)
 }
@@ -56,13 +78,17 @@ async fn verify_network(
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let rnode_url = std::env::var("RCHAIN_RNODE_URL")
-        .unwrap_or_else(|_| {
-            "http://localhost:40403".to_string()
-        });
+    let rnode_url =
+        std::env::var("RCHAIN_RNODE_URL")
+            .unwrap_or_else(|_| {
+                "http://localhost:40403".to_string()
+            });
 
     println!("RChain Sentinel");
-    println!("RNode target: {}", rnode_url);
+    println!(
+        "RNode target: {}",
+        rnode_url
+    );
 
     let state = AppState {
         rnode: Arc::new(
@@ -87,15 +113,24 @@ async fn main() {
         .layer(CorsLayer::permissive());
 
     let listener =
-        tokio::net::TcpListener::bind("0.0.0.0:8080")
-            .await
-            .expect("failed to bind server");
+        tokio::net::TcpListener::bind(
+            "0.0.0.0:8080"
+        )
+        .await
+        .expect(
+            "failed to bind server"
+        );
 
     println!(
         "Listening on http://0.0.0.0:8080"
     );
 
-    axum::serve(listener, app)
-        .await
-        .expect("server failed");
+    axum::serve(
+        listener,
+        app,
+    )
+    .await
+    .expect(
+        "server failed"
+    );
 }
