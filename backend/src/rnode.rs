@@ -1,5 +1,6 @@
 use crate::models::{NetworkStatus, RNodeStatusPayload};
 use reqwest::Client;
+use serde_json::Value;
 
 #[derive(Clone)]
 pub struct RNodeClient {
@@ -75,5 +76,40 @@ impl RNodeClient {
                 rnode: None,
             },
         }
+    }
+
+    pub async fn fetch_last_finalized_block(
+        &self,
+    ) -> Result<Value, String> {
+        let url = format!(
+            "{}/api/last-finalized-block",
+            self.base_url
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            return Err(format!(
+                "Last-finalized-block endpoint returned HTTP {}",
+                status.as_u16()
+            ));
+        }
+
+        response
+            .json::<Value>()
+            .await
+            .map_err(|error| {
+                format!(
+                    "Failed to parse last-finalized-block response: {}",
+                    error
+                )
+            })
     }
 }
