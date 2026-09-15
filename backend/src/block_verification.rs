@@ -15,6 +15,7 @@ impl BlockVerificationEngine {
             Self::justification_presence(evidence),
             Self::full_block_available(evidence),
             Self::full_block_hash_match(evidence),
+            Self::canonical_consistency(evidence),
             Self::node_finality_claim(evidence),
         ];
         let status = if checks.iter().any(|c| matches!(c.status, VerificationStatus::Fail)) { VerificationStatus::Fail } else if checks.iter().any(|c| matches!(c.status, VerificationStatus::Warn)) { VerificationStatus::Warn } else { VerificationStatus::Pass };
@@ -41,6 +42,14 @@ impl BlockVerificationEngine {
     fn full_block_available(e: &FinalizedBlockEvidence) -> VerificationCheck { if e.full_block_available { Self::check("full_block_available", VerificationStatus::Pass, "RNode returned the block through /api/block/{hash}.", CheckSeverity::Info, "rnode", "full_block_available", "true") } else { Self::check("full_block_available", VerificationStatus::Warn, e.finality_error.as_deref().unwrap_or("Full block response is unavailable."), CheckSeverity::Warning, "rnode", "full_block_available", "false") } }
 
     fn full_block_hash_match(e: &FinalizedBlockEvidence) -> VerificationCheck { match e.finality_hash_match { Some(true) => Self::check("full_block_hash_match", VerificationStatus::Pass, "The block returned by /api/block/{hash} matches the observed finalized-block hash.", CheckSeverity::Info, "rnode", "block_hash_match", "true"), Some(false) => Self::check("full_block_hash_match", VerificationStatus::Fail, "RNode returned a block whose hash does not match the observed finalized-block hash.", CheckSeverity::Critical, "rnode", "block_hash_match", "false"), None => Self::check_without_evidence("full_block_hash_match", VerificationStatus::Warn, "A full block hash could not be compared.", CheckSeverity::Warning) } }
+
+    fn canonical_consistency(e: &FinalizedBlockEvidence) -> VerificationCheck {
+        match e.canonical_consistency {
+            Some(true) => Self::check("canonical_block_consistency", VerificationStatus::Pass, "The observed finalized-block payload matches the canonical /api/block/{hash} protocol fields.", CheckSeverity::Info, "rnode", "canonical_consistency", "true"),
+            Some(false) => Self::check("canonical_block_consistency", VerificationStatus::Fail, &format!("Canonical block field comparison failed: {}", e.canonical_mismatches.join("; ")), CheckSeverity::Critical, "rnode", "canonical_mismatches", e.canonical_mismatches.join("; ")),
+            None => Self::check_without_evidence("canonical_block_consistency", VerificationStatus::Warn, "Canonical protocol fields could not be compared.", CheckSeverity::Warning),
+        }
+    }
 
     fn node_finality_claim(e: &FinalizedBlockEvidence) -> VerificationCheck { match e.node_reported_finalized { Some(true) => Self::check("node_reported_finality", VerificationStatus::Pass, "RNode explicitly reports the observed block hash as finalized.", CheckSeverity::Info, "rnode", "is_finalized", "true"), Some(false) => Self::check("node_reported_finality", VerificationStatus::Fail, "RNode explicitly reports the observed block hash as not finalized.", CheckSeverity::Critical, "rnode", "is_finalized", "false"), None => Self::check_without_evidence("node_reported_finality", VerificationStatus::Warn, "RNode finality status was unavailable or could not be parsed.", CheckSeverity::Warning) } }
 
