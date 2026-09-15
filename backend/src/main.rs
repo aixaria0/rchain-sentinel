@@ -52,24 +52,6 @@ async fn verify_network(
     Json(report)
 }
 
-async fn last_finalized_block(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
-    match state.rnode.last_finalized_block().await {
-        Ok(block) => Json(serde_json::json!({
-            "ok": true,
-            "endpoint": "/api/last-finalized-block",
-            "block": block
-        })),
-
-        Err(error) => Json(serde_json::json!({
-            "ok": false,
-            "endpoint": "/api/last-finalized-block",
-            "error": error
-        })),
-    }
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -100,10 +82,6 @@ async fn main() {
         .route(
             "/api/verify",
             get(verify_network),
-        )
-        .route(
-            "/api/evidence/finalized-block",
-            get(last_finalized_block),
         )
         .with_state(state)
         .layer(CorsLayer::permissive());
