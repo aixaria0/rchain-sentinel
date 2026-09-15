@@ -61,6 +61,54 @@ pub struct RNodeIdentity {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct RNodeObservation {
+    pub node_id: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub network_id: Option<String>,
+    pub shard_id: Option<String>,
+    pub ready: Option<bool>,
+    pub validator: Option<bool>,
+    pub read_only: Option<bool>,
+    pub current_epoch: Option<u64>,
+    pub finalized_block: Option<u64>,
+    pub peer_count: Option<usize>,
+}
+
+impl RNodeObservation {
+    pub fn from_status(status: &RNodeStatusPayload) -> Self {
+        let peer_count = status.peers.as_ref().map(|peers| match peers {
+            serde_json::Value::Array(items) => items.len(),
+            serde_json::Value::Object(map) => map.len(),
+            _ => 0,
+        });
+
+        let (node_id, host, port) = match &status.node {
+            Some(node) => (
+                node.id.clone(),
+                node.host.clone(),
+                node.port,
+            ),
+            None => (None, None, None),
+        };
+
+        Self {
+            node_id,
+            host,
+            port,
+            network_id: status.network_id.clone(),
+            shard_id: status.shard_id.clone(),
+            ready: status.ready,
+            validator: status.validator,
+            read_only: status.read_only,
+            current_epoch: status.current_epoch,
+            finalized_block: status.last_finalized_block_number,
+            peer_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub enum VerificationStatus {
     Pass,
     Warn,
