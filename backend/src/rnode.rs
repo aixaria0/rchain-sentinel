@@ -1,6 +1,7 @@
 use crate::models::{NetworkStatus, RNodeStatusPayload};
 use reqwest::Client;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 #[derive(Clone)]
 pub struct RNodeClient {
@@ -32,10 +33,7 @@ impl RNodeClient {
                         latency_ms: Some(latency_ms),
                         http_status: Some(http_status),
                         probe: url,
-                        error: Some(format!(
-                            "RNode returned HTTP {}",
-                            http_status
-                        )),
+                        error: Some(format!("RNode returned HTTP {}", http_status)),
                         rnode: None,
                     };
                 }
@@ -50,22 +48,17 @@ impl RNodeClient {
                         error: None,
                         rnode: Some(payload),
                     },
-
                     Err(error) => NetworkStatus {
                         reachable: true,
                         node_url: self.base_url.clone(),
                         latency_ms: Some(latency_ms),
                         http_status: Some(http_status),
                         probe: url,
-                        error: Some(format!(
-                            "RNode response parsing failed: {}",
-                            error
-                        )),
+                        error: Some(format!("RNode response parsing failed: {}", error)),
                         rnode: None,
                     },
                 }
             }
-
             Err(error) => NetworkStatus {
                 reachable: false,
                 node_url: self.base_url.clone(),
@@ -78,13 +71,8 @@ impl RNodeClient {
         }
     }
 
-    pub async fn fetch_last_finalized_block(
-        &self,
-    ) -> Result<Value, String> {
-        let url = format!(
-            "{}/api/last-finalized-block",
-            self.base_url
-        );
+    pub async fn fetch_last_finalized_block(&self) -> Result<Value, String> {
+        let url = format!("{}/api/last-finalized-block", self.base_url);
 
         let response = self
             .client
@@ -102,14 +90,24 @@ impl RNodeClient {
             ));
         }
 
-        response
-            .json::<Value>()
-            .await
-            .map_err(|error| {
-                format!(
-                    "Failed to parse last-finalized-block response: {}",
-                    error
-                )
-            })
+        response.json::<Value>().await.map_err(|error| {
+            format!(
+                "Failed to parse last-finalized-block response: {}",
+                error
+            )
+        })
+    }
+
+    pub async fn fetch_last_finalized_block_evidence(
+        &self,
+    ) -> Result<crate::models::FinalizedBlockEvidence, String> {
+        let raw = self.fetch_last_finalized_block().await?;
+        let serialized = serde_json::to_vec(&raw)
+            .map_err(|error| format!("Failed to serialize evidence: {}", error))?;
+        let digest = Sha256::digest(&serialized);
+        let payload_sha256 = format!("{:x}", digest);
+
+        Ok(crate::models::FinalizedBlockEvidence::available(raw)
+            .with_sha256(payload_sha256))
     }
 }
