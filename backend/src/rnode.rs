@@ -29,7 +29,7 @@ impl RNodeClient {
                     node_url: self.base_url.clone(),
                     latency_ms: Some(latency_ms),
                     http_status: Some(http_status),
-                    probe: Some(url),
+                    probe: url,
                     error: if response.status().is_success() {
                         None
                     } else {
@@ -43,7 +43,7 @@ impl RNodeClient {
                 node_url: self.base_url.clone(),
                 latency_ms: None,
                 http_status: None,
-                probe: Some(url),
+                probe: url,
                 error: Some(error.to_string()),
             },
         }
