@@ -28,6 +28,18 @@ pub struct CrossNodeReport {
     pub agreement: bool, pub status: String, pub verification_basis: String, pub observations: Vec<CrossNodeAgreement>,
 }
 #[derive(Debug, Clone, Serialize)]
+pub struct CasperEvidenceReport {
+    pub evidence_available: bool,
+    pub validator_identity_present: bool,
+    pub stake_weight_present: bool,
+    pub bet_present: bool,
+    pub justification_present: bool,
+    pub equivocation_signal: bool,
+    pub recognized_fields: Vec<String>,
+    pub status: String,
+    pub verification_basis: String,
+}
+#[derive(Debug, Clone, Serialize)]
 pub enum VerificationStatus { Pass, Warn, Fail }
 #[derive(Debug, Clone, Serialize)]
 pub enum CheckSeverity { Info, Warning, Critical }
