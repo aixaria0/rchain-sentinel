@@ -146,6 +146,26 @@ impl FinalizedBlockEvidence {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CrossNodeAgreement {
+    pub node_url: String,
+    pub reachable: bool,
+    pub finalized_height: Option<u64>,
+    pub block_hash: Option<String>,
+    pub justification_present: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CrossNodeReport {
+    pub target_count: usize,
+    pub reachable_count: usize,
+    pub agreeing_nodes: usize,
+    pub common_finalized_height: Option<u64>,
+    pub agreement: bool,
+    pub status: String,
+    pub observations: Vec<CrossNodeAgreement>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub enum VerificationStatus {
     Pass,
     Warn,
