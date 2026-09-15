@@ -1,3 +1,4 @@
+mod models;
 mod rnode;
 
 use axum::{
@@ -7,22 +8,15 @@ use axum::{
     Router,
 };
 
-use rnode::{NetworkStatus, RNodeClient};
+use models::{HealthResponse, NetworkStatus};
+use rnode::RNodeClient;
 
-use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 struct AppState {
     rnode: Arc<RNodeClient>,
-}
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    service: &'static str,
-    version: &'static str,
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -36,7 +30,7 @@ async fn health() -> Json<HealthResponse> {
 async fn network_status(
     State(state): State<AppState>,
 ) -> Json<NetworkStatus> {
-    Json(state.rnode.check().await)
+    Json(state.rnode.status().await)
 }
 
 #[tokio::main]
@@ -44,9 +38,10 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let rnode_url = std::env::var("RCHAIN_RNODE_URL")
-        .unwrap_or_else(|_| {
-            "http://localhost:40403".to_string()
-        });
+        .unwrap_or_else(|_| "http://localhost:40403".to_string());
+
+    println!("RChain Sentinel");
+    println!("RNode target: {}", rnode_url);
 
     let state = AppState {
         rnode: Arc::new(RNodeClient::new(rnode_url)),
@@ -54,24 +49,15 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
-        .route(
-            "/api/network/status",
-            get(network_status),
-        )
+        .route("/api/network/status", get(network_status))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
-    let address = "0.0.0.0:8080";
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+        .await
+        .expect("failed to bind server");
 
-    println!(
-        "RChain Sentinel backend listening on {}",
-        address
-    );
-
-    let listener =
-        tokio::net::TcpListener::bind(address)
-            .await
-            .expect("failed to bind server");
+    println!("Listening on http://0.0.0.0:8080");
 
     axum::serve(listener, app)
         .await
