@@ -21,6 +21,8 @@ RChain Sentinel is an independent verification service and black-chain verificat
 
 Sentinel collects RNode state and finalized-block evidence, preserves the observed payload, cross-checks multiple nodes, inventories Casper protocol evidence, and produces explicit machine-readable verification results.
 
+The explorer now exposes a unified block-centric evidence view designed for integration with an RChain block-explorer workflow: **Why this block?** The answer is assembled from node state, observed block identity, validator/bond evidence, justifications, cross-node observations, and explicit verification limitations.
+
 The system is intentionally conservative: node-count agreement is never presented as stake-weighted Casper finality. Protocol-shaped evidence is reported separately until the exact response schema and validator/stake semantics are pinned to the target RNode implementation.
 
 ## Verification pipeline
@@ -45,6 +47,9 @@ Node checks   Block checks
  Casper evidence inventory
           │
           ▼
+ Unified block explanation
+          │
+          ▼
  Verification Explorer
           │
           ▼
@@ -55,7 +60,9 @@ Node checks   Block checks
 
 Sentinel currently provides:
 
-- A browser-based verification console at `/` with live refresh.
+- A browser-based black-chain verification console at `/` with live refresh.
+- A unified `/api/explorer/block` endpoint that assembles network, block, Casper, cross-node, verification and explanation evidence for the current finalized block.
+- A human-readable **Why this block?** evidence trail in the explorer.
 - RNode reachability, HTTP status, latency, readiness, validator/read-only state, peers, epoch, network and shard identity.
 - Finalized-block evidence collection with an SHA-256 fingerprint of the exact JSON payload observed by Sentinel.
 - Cross-checking of finalized height and block hash across configured RNodes.
@@ -70,7 +77,7 @@ Important: the payload SHA-256 is an integrity fingerprint of the observed JSON.
 
 ## API
 
-`GET /` — live Sentinel verification explorer console.
+`GET /` — live black-chain verification explorer console.
 
 `GET /health` — Sentinel service health.
 
@@ -85,6 +92,8 @@ Important: the payload SHA-256 is an integrity fingerprint of the observed JSON.
 `GET /api/verify/casper` — protocol-aware Casper evidence inventory. This endpoint explicitly avoids claiming stake-weighted finality.
 
 `GET /api/verify/cross-node` — concurrent cross-node finalized-block agreement analysis.
+
+`GET /api/explorer/block` — unified block-centric evidence package intended to sit behind a black-chain explorer block detail view.
 
 ## Configuration
 
@@ -104,9 +113,24 @@ RCHAIN_RNODE_URL=http://node-a:40403,http://node-b:40403,http://node-c:40403
 
 The Sentinel HTTP service listens on `0.0.0.0:8080`.
 
-## Explorer direction
+## Explorer integration direction
 
-The console is deliberately an evidence layer rather than another generic block list. A future RevDefine integration can use Sentinel's verification endpoints to attach an evidence view to a block: observed block identity, validator/stake evidence, justifications, cross-node agreement, conflicts, and the explicit basis for every PASS/WARN/FAIL result.
+Jim Whitescarver suggested incorporating Sentinel into a black-chain explorer and pointed to RevDefine as the RChain block explorer. Sentinel therefore treats the explorer as the presentation layer and Sentinel as the evidence/verification layer.
+
+The current implementation does not invent a RevDefine API contract. Instead, `/api/explorer/block` provides a stable, machine-readable evidence package that an existing or future explorer block-detail page can consume.
+
+A block detail integration can render:
+
+```text
+Block
+ ├── identity / height / parent
+ ├── proposer / validator evidence
+ ├── bonds / observed stake
+ ├── justifications
+ ├── cross-node agreement
+ ├── verification checks
+ └── Why this block? explanation
+```
 
 The explorer must preserve the distinction between:
 
@@ -140,6 +164,8 @@ backend/
 
 `CasperEvidenceEngine` inventories RChain protocol-shaped evidence while deliberately stopping short of an unsupported finality claim.
 
+`/api/explorer/block` composes these independent results into one block-centric verification object and generates an explicit evidence explanation.
+
 `console.html` provides the black-chain verification surface over the same machine-readable evidence APIs.
 
 ## Running locally
@@ -169,9 +195,9 @@ Cross-Check
    ↓
 Analyze Protocol Evidence
    ↓
-Verify
+Explain Why
    ↓
-Explain
+Verify
    ↓
 Explorer
 ```
@@ -193,6 +219,8 @@ The long-term objective is a verification layer that can answer not only what st
 - Protocol-aware Casper evidence inventory
 - Deterministic verification reporting
 - Browser verification console
+- Unified block-centric explorer evidence endpoint
+- Human-readable block explanation view
 - CI-backed Rust tests
 
 ### Next
@@ -203,7 +231,7 @@ The long-term objective is a verification layer that can answer not only what st
 - Detect equivocation using protocol-defined evidence rather than heuristic field names.
 - Compute stake-weighted agreement only from an authenticated validator/stake set.
 - Add historical evidence and block-by-block verification.
-- Integrate Sentinel evidence into the RevDefine block-explorer workflow.
+- Connect the unified Sentinel evidence package to the concrete RevDefine/explorer block-detail API once that interface is established.
 
 ## Project status
 
