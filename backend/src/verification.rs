@@ -226,17 +226,28 @@ impl VerificationEngine {
 
     fn node_identity(observation: &RNodeObservation) -> EvidenceCheck {
         match &observation.node_id {
-            Some(id) if !id.is_empty() => Self::check(
-                "node_identity",
-                VerificationStatus::Pass,
-                "RNode identity is available.",
-                CheckSeverity::Info,
-                "observation",
-                "node_id",
-                id.clone(),
-            ),
+            Some(id) => {
+                if !id.is_empty() {
+                    Self::check(
+                        "node_identity",
+                        VerificationStatus::Pass,
+                        "RNode identity is available.",
+                        CheckSeverity::Info,
+                        "observation",
+                        "node_id",
+                        id.clone(),
+                    )
+                } else {
+                    Self::check_without_evidence(
+                        "node_identity",
+                        VerificationStatus::Warn,
+                        "RNode identity is empty.",
+                        CheckSeverity::Warning,
+                    )
+                }
+            }
 
-            _ => Self::check_without_evidence(
+            None => Self::check_without_evidence(
                 "node_identity",
                 VerificationStatus::Warn,
                 "RNode identity is unavailable.",
@@ -257,7 +268,10 @@ impl VerificationEngine {
                 CheckSeverity::Info,
                 "observation",
                 "network/shard",
-                format!("network_id={}, shard_id={}", network, shard),
+                format!(
+                    "network_id={}, shard_id={}",
+                    network, shard
+                ),
             ),
 
             (Some(network), None) => Self::check(
@@ -355,25 +369,32 @@ impl VerificationEngine {
         observation: &RNodeObservation,
     ) -> EvidenceCheck {
         match observation.finalized_block {
-            Some(block) if block > 0 => Self::check(
-                "finalized_block",
-                VerificationStatus::Pass,
-                &format!("RNode reports finalized block {}.", block),
-                CheckSeverity::Info,
-                "observation",
-                "finalized_block",
-                block.to_string(),
-            ),
-
-            Some(0) => Self::check(
-                "finalized_block",
-                VerificationStatus::Warn,
-                "RNode reports no finalized block yet.",
-                CheckSeverity::Warning,
-                "observation",
-                "finalized_block",
-                "0",
-            ),
+            Some(block) => {
+                if block > 0 {
+                    Self::check(
+                        "finalized_block",
+                        VerificationStatus::Pass,
+                        &format!(
+                            "RNode reports finalized block {}.",
+                            block
+                        ),
+                        CheckSeverity::Info,
+                        "observation",
+                        "finalized_block",
+                        block.to_string(),
+                    )
+                } else {
+                    Self::check(
+                        "finalized_block",
+                        VerificationStatus::Warn,
+                        "RNode reports no finalized block yet.",
+                        CheckSeverity::Warning,
+                        "observation",
+                        "finalized_block",
+                        "0",
+                    )
+                }
+            }
 
             None => Self::check_without_evidence(
                 "finalized_block",
@@ -386,25 +407,32 @@ impl VerificationEngine {
 
     fn peer_state(observation: &RNodeObservation) -> EvidenceCheck {
         match observation.peer_count {
-            Some(count) if count > 0 => Self::check(
-                "peer_state",
-                VerificationStatus::Pass,
-                &format!("RNode reports {} peer entries.", count),
-                CheckSeverity::Info,
-                "observation",
-                "peer_count",
-                count.to_string(),
-            ),
-
-            Some(0) => Self::check(
-                "peer_state",
-                VerificationStatus::Warn,
-                "RNode reports no peer entries.",
-                CheckSeverity::Warning,
-                "observation",
-                "peer_count",
-                "0",
-            ),
+            Some(count) => {
+                if count > 0 {
+                    Self::check(
+                        "peer_state",
+                        VerificationStatus::Pass,
+                        &format!(
+                            "RNode reports {} peer entries.",
+                            count
+                        ),
+                        CheckSeverity::Info,
+                        "observation",
+                        "peer_count",
+                        count.to_string(),
+                    )
+                } else {
+                    Self::check(
+                        "peer_state",
+                        VerificationStatus::Warn,
+                        "RNode reports no peer entries.",
+                        CheckSeverity::Warning,
+                        "observation",
+                        "peer_count",
+                        "0",
+                    )
+                }
+            }
 
             None => Self::check_without_evidence(
                 "peer_state",
@@ -420,7 +448,10 @@ impl VerificationEngine {
             Some(epoch) => Self::check(
                 "epoch_state",
                 VerificationStatus::Pass,
-                &format!("RNode reports current epoch {}.", epoch),
+                &format!(
+                    "RNode reports current epoch {}.",
+                    epoch
+                ),
                 CheckSeverity::Info,
                 "observation",
                 "current_epoch",
@@ -441,6 +472,7 @@ impl VerificationEngine {
     ) -> EvidenceCheck {
         let identity_present = observation.node_id.is_some();
         let network_present = observation.network_id.is_some();
+
         let state_present =
             observation.ready.is_some()
                 || observation.validator.is_some()
