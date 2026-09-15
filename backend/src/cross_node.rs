@@ -100,7 +100,7 @@ impl CrossNodeVerificationEngine {
             && common_block_hash.is_some()
             && reachable
                 .iter()
-                .all(|item| item.block_hash == common_block_hash.as_ref());
+                .all(|item| item.block_hash.as_deref() == common_block_hash.as_deref());
 
         let conflicting_nodes = reachable
             .iter()
@@ -108,7 +108,7 @@ impl CrossNodeVerificationEngine {
                 item.finalized_height.is_some()
                     && item.block_hash.is_some()
                     && (item.finalized_height != common_finalized_height
-                        || item.block_hash != common_block_hash.as_ref())
+                        || item.block_hash.as_deref() != common_block_hash.as_deref())
             })
             .count();
 
