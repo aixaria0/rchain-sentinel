@@ -61,7 +61,19 @@ impl FinalizedBlockEvidence {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct CrossNodeAgreement { pub node_url: String, pub reachable: bool, pub finalized_height: Option<u64>, pub block_hash: Option<String>, pub payload_sha256: Option<String>, pub proposer: Option<String>, pub signature_present: bool, pub justification_present: bool }
+pub struct CrossNodeAgreement {
+    pub node_url: String,
+    pub reachable: bool,
+    pub finalized_height: Option<u64>,
+    pub block_hash: Option<String>,
+    pub payload_sha256: Option<String>,
+    pub proposer: Option<String>,
+    pub signature_present: bool,
+    pub justification_present: bool,
+    pub full_block_available: bool,
+    pub full_block_hash_match: Option<bool>,
+    pub node_reported_finalized: Option<bool>,
+}
 #[derive(Debug, Clone, Serialize)]
 pub struct CrossNodeReport { pub target_count: usize, pub reachable_count: usize, pub evidence_count: usize, pub agreeing_nodes: usize, pub quorum_required: usize, pub quorum_observed: bool, pub agreement_ratio: f64, pub common_finalized_height: Option<u64>, pub common_block_hash: Option<String>, pub height_agreement: bool, pub hash_agreement: bool, pub missing_height_nodes: usize, pub missing_hash_nodes: usize, pub conflicting_nodes: usize, pub agreement: bool, pub status: String, pub verification_basis: String, pub observations: Vec<CrossNodeAgreement> }
 #[derive(Debug, Clone, Serialize)]
