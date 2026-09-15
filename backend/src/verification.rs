@@ -1,5 +1,6 @@
 use crate::models::{
     NetworkStatus,
+    RNodeObservation,
     VerificationCheck,
     VerificationReport,
     VerificationStatus,
@@ -52,12 +53,16 @@ impl VerificationEngine {
         ];
 
         if let Some(rnode) = &status.rnode {
-            checks.push(Self::node_identity(rnode));
-            checks.push(Self::network_identity(rnode));
-            checks.push(Self::readiness(rnode));
-            checks.push(Self::validator_state(rnode));
-            checks.push(Self::finalized_block_state(rnode));
-            checks.push(Self::peer_state(rnode));
+            let observation = RNodeObservation::from_status(rnode);
+
+            checks.push(Self::node_identity(&observation));
+            checks.push(Self::network_identity(&observation));
+            checks.push(Self::readiness(&observation));
+            checks.push(Self::validator_state(&observation));
+            checks.push(Self::finalized_block_state(&observation));
+            checks.push(Self::peer_state(&observation));
+            checks.push(Self::epoch_state(&observation));
+            checks.push(Self::observation_integrity(&observation));
         } else {
             checks.push(Self::rnode_payload_presence());
         }
@@ -219,46 +224,38 @@ impl VerificationEngine {
         )
     }
 
-    fn node_identity(
-        status: &crate::models::RNodeStatusPayload,
-    ) -> EvidenceCheck {
-        match &status.node {
-            Some(node) => {
-                let identity = node.id.as_deref().unwrap_or("unknown");
+    fn node_identity(observation: &RNodeObservation) -> EvidenceCheck {
+        match &observation.node_id {
+            Some(id) if !id.is_empty() => Self::check(
+                "node_identity",
+                VerificationStatus::Pass,
+                "RNode identity is available.",
+                CheckSeverity::Info,
+                "observation",
+                "node_id",
+                id.clone(),
+            ),
 
-                Self::check(
-                    "node_identity",
-                    VerificationStatus::Pass,
-                    "RNode identity information is available.",
-                    CheckSeverity::Info,
-                    "rnode",
-                    "node.id",
-                    identity,
-                )
-            }
-
-            None => Self::check_without_evidence(
+            _ => Self::check_without_evidence(
                 "node_identity",
                 VerificationStatus::Warn,
-                "RNode identity information is unavailable.",
+                "RNode identity is unavailable.",
                 CheckSeverity::Warning,
             ),
         }
     }
 
-    fn network_identity(
-        status: &crate::models::RNodeStatusPayload,
-    ) -> EvidenceCheck {
-        let network = status.network_id.as_deref();
-        let shard = status.shard_id.as_deref();
-
-        match (network, shard) {
+    fn network_identity(observation: &RNodeObservation) -> EvidenceCheck {
+        match (
+            observation.network_id.as_deref(),
+            observation.shard_id.as_deref(),
+        ) {
             (Some(network), Some(shard)) => Self::check(
                 "network_identity",
                 VerificationStatus::Pass,
                 "Network and shard identity are available.",
                 CheckSeverity::Info,
-                "rnode",
+                "observation",
                 "network/shard",
                 format!("network_id={}, shard_id={}", network, shard),
             ),
@@ -266,9 +263,9 @@ impl VerificationEngine {
             (Some(network), None) => Self::check(
                 "network_identity",
                 VerificationStatus::Warn,
-                "Network identity is available, but shard identity is missing.",
+                "Network identity is available but shard identity is missing.",
                 CheckSeverity::Warning,
-                "rnode",
+                "observation",
                 "network_id",
                 network.to_string(),
             ),
@@ -276,9 +273,9 @@ impl VerificationEngine {
             (None, Some(shard)) => Self::check(
                 "network_identity",
                 VerificationStatus::Warn,
-                "Shard identity is available, but network identity is missing.",
+                "Shard identity is available but network identity is missing.",
                 CheckSeverity::Warning,
-                "rnode",
+                "observation",
                 "shard_id",
                 shard.to_string(),
             ),
@@ -292,16 +289,14 @@ impl VerificationEngine {
         }
     }
 
-    fn readiness(
-        status: &crate::models::RNodeStatusPayload,
-    ) -> EvidenceCheck {
-        match status.ready {
+    fn readiness(observation: &RNodeObservation) -> EvidenceCheck {
+        match observation.ready {
             Some(true) => Self::check(
                 "node_readiness",
                 VerificationStatus::Pass,
                 "RNode reports itself as ready.",
                 CheckSeverity::Info,
-                "rnode",
+                "observation",
                 "ready",
                 "true",
             ),
@@ -311,7 +306,7 @@ impl VerificationEngine {
                 VerificationStatus::Fail,
                 "RNode reports that it is not ready.",
                 CheckSeverity::Critical,
-                "rnode",
+                "observation",
                 "ready",
                 "false",
             ),
@@ -325,16 +320,14 @@ impl VerificationEngine {
         }
     }
 
-    fn validator_state(
-        status: &crate::models::RNodeStatusPayload,
-    ) -> EvidenceCheck {
-        match status.validator {
+    fn validator_state(observation: &RNodeObservation) -> EvidenceCheck {
+        match observation.validator {
             Some(true) => Self::check(
                 "validator_state",
                 VerificationStatus::Pass,
                 "RNode reports validator mode enabled.",
                 CheckSeverity::Info,
-                "rnode",
+                "observation",
                 "validator",
                 "true",
             ),
@@ -344,7 +337,7 @@ impl VerificationEngine {
                 VerificationStatus::Warn,
                 "RNode is reachable but is not operating as a validator.",
                 CheckSeverity::Warning,
-                "rnode",
+                "observation",
                 "validator",
                 "false",
             ),
@@ -359,35 +352,28 @@ impl VerificationEngine {
     }
 
     fn finalized_block_state(
-        status: &crate::models::RNodeStatusPayload,
+        observation: &RNodeObservation,
     ) -> EvidenceCheck {
-        match status.last_finalized_block_number {
-            Some(block) => {
-                if block > 0 {
-                    Self::check(
-                        "finalized_block",
-                        VerificationStatus::Pass,
-                        &format!(
-                            "RNode reports finalized block {}.",
-                            block
-                        ),
-                        CheckSeverity::Info,
-                        "rnode",
-                        "last_finalized_block_number",
-                        block.to_string(),
-                    )
-                } else {
-                    Self::check(
-                        "finalized_block",
-                        VerificationStatus::Warn,
-                        "RNode reports no finalized block yet.",
-                        CheckSeverity::Warning,
-                        "rnode",
-                        "last_finalized_block_number",
-                        "0",
-                    )
-                }
-            }
+        match observation.finalized_block {
+            Some(block) if block > 0 => Self::check(
+                "finalized_block",
+                VerificationStatus::Pass,
+                &format!("RNode reports finalized block {}.", block),
+                CheckSeverity::Info,
+                "observation",
+                "finalized_block",
+                block.to_string(),
+            ),
+
+            Some(0) => Self::check(
+                "finalized_block",
+                VerificationStatus::Warn,
+                "RNode reports no finalized block yet.",
+                CheckSeverity::Warning,
+                "observation",
+                "finalized_block",
+                "0",
+            ),
 
             None => Self::check_without_evidence(
                 "finalized_block",
@@ -398,39 +384,27 @@ impl VerificationEngine {
         }
     }
 
-    fn peer_state(
-        status: &crate::models::RNodeStatusPayload,
-    ) -> EvidenceCheck {
-        match &status.peers {
-            Some(peers) => {
-                let count = match peers {
-                    serde_json::Value::Array(items) => items.len(),
-                    serde_json::Value::Object(map) => map.len(),
-                    _ => 0,
-                };
+    fn peer_state(observation: &RNodeObservation) -> EvidenceCheck {
+        match observation.peer_count {
+            Some(count) if count > 0 => Self::check(
+                "peer_state",
+                VerificationStatus::Pass,
+                &format!("RNode reports {} peer entries.", count),
+                CheckSeverity::Info,
+                "observation",
+                "peer_count",
+                count.to_string(),
+            ),
 
-                if count > 0 {
-                    Self::check(
-                        "peer_state",
-                        VerificationStatus::Pass,
-                        &format!("RNode reports {} peer entries.", count),
-                        CheckSeverity::Info,
-                        "rnode",
-                        "peers",
-                        count.to_string(),
-                    )
-                } else {
-                    Self::check(
-                        "peer_state",
-                        VerificationStatus::Warn,
-                        "RNode reports no peer entries.",
-                        CheckSeverity::Warning,
-                        "rnode",
-                        "peers",
-                        "0",
-                    )
-                }
-            }
+            Some(0) => Self::check(
+                "peer_state",
+                VerificationStatus::Warn,
+                "RNode reports no peer entries.",
+                CheckSeverity::Warning,
+                "observation",
+                "peer_count",
+                "0",
+            ),
 
             None => Self::check_without_evidence(
                 "peer_state",
@@ -438,6 +412,60 @@ impl VerificationEngine {
                 "Peer information is unavailable.",
                 CheckSeverity::Warning,
             ),
+        }
+    }
+
+    fn epoch_state(observation: &RNodeObservation) -> EvidenceCheck {
+        match observation.current_epoch {
+            Some(epoch) => Self::check(
+                "epoch_state",
+                VerificationStatus::Pass,
+                &format!("RNode reports current epoch {}.", epoch),
+                CheckSeverity::Info,
+                "observation",
+                "current_epoch",
+                epoch.to_string(),
+            ),
+
+            None => Self::check_without_evidence(
+                "epoch_state",
+                VerificationStatus::Warn,
+                "Current epoch is unavailable.",
+                CheckSeverity::Warning,
+            ),
+        }
+    }
+
+    fn observation_integrity(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
+        let identity_present = observation.node_id.is_some();
+        let network_present = observation.network_id.is_some();
+        let state_present =
+            observation.ready.is_some()
+                || observation.validator.is_some()
+                || observation.finalized_block.is_some();
+
+        if identity_present && network_present && state_present {
+            Self::check(
+                "observation_integrity",
+                VerificationStatus::Pass,
+                "Observation contains identity, network, and node-state evidence.",
+                CheckSeverity::Info,
+                "observation",
+                "integrity",
+                "complete",
+            )
+        } else {
+            Self::check(
+                "observation_integrity",
+                VerificationStatus::Warn,
+                "Observation is incomplete and cannot provide a full node-state picture.",
+                CheckSeverity::Warning,
+                "observation",
+                "integrity",
+                "partial",
+            )
         }
     }
 
