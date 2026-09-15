@@ -105,9 +105,84 @@ impl RNodeClient {
         let serialized = serde_json::to_vec(&raw)
             .map_err(|error| format!("Failed to serialize evidence: {}", error))?;
         let digest = Sha256::digest(&serialized);
-        let payload_sha256 = format!("{:x}", digest);
+
+        let block_hash = Self::find_string(&raw, &[
+            "blockHash", "block_hash", "hash", "id",
+        ]);
+        let parent_hash = Self::find_string(&raw, &[
+            "parentHash", "parent_hash", "parentsHash", "parents_hash",
+        ]);
+        let proposer = Self::find_string(&raw, &[
+            "proposer", "sender", "creator", "validator",
+        ]);
+        let signature = Self::find_string(&raw, &[
+            "signature", "sig", "blockSignature", "block_signature",
+        ]);
+        let justification_present = Self::contains_key(&raw, &[
+            "justification", "justifications", "approvedBlock", "approved_block",
+        ]);
 
         Ok(crate::models::FinalizedBlockEvidence::available(raw)
-            .with_sha256(payload_sha256))
+            .with_sha256(format!("{:x}", digest))
+            .with_block_fields(
+                block_hash,
+                parent_hash,
+                proposer,
+                signature,
+                justification_present,
+            ))
+    }
+
+    fn find_string(value: &Value, keys: &[&str]) -> Option<String> {
+        match value {
+            Value::Object(map) => {
+                for key in keys {
+                    if let Some(candidate) = map.get(*key) {
+                        if let Some(text) = Self::scalar_string(candidate) {
+                            return Some(text);
+                        }
+                    }
+                }
+
+                for nested in map.values() {
+                    if let Some(found) = Self::find_string(nested, keys) {
+                        return Some(found);
+                    }
+                }
+
+                None
+            }
+            Value::Array(items) => {
+                for item in items {
+                    if let Some(found) = Self::find_string(item, keys) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn contains_key(value: &Value, keys: &[&str]) -> bool {
+        match value {
+            Value::Object(map) => {
+                if keys.iter().any(|key| map.contains_key(*key)) {
+                    return true;
+                }
+                map.values().any(|nested| Self::contains_key(nested, keys))
+            }
+            Value::Array(items) => items.iter().any(|item| Self::contains_key(item, keys)),
+            _ => false,
+        }
+    }
+
+    fn scalar_string(value: &Value) -> Option<String> {
+        match value {
+            Value::String(text) if !text.is_empty() => Some(text.clone()),
+            Value::Number(number) => Some(number.to_string()),
+            Value::Bool(value) => Some(value.to_string()),
+            _ => None,
+        }
     }
 }
