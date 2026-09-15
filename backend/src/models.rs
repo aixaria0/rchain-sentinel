@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -15,6 +15,49 @@ pub struct NetworkStatus {
     pub http_status: Option<u16>,
     pub probe: String,
     pub error: Option<String>,
+    pub rnode: Option<RNodeStatusPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RNodeStatusPayload {
+    #[serde(default)]
+    pub node: Option<RNodeIdentity>,
+
+    #[serde(default)]
+    pub network_id: Option<String>,
+
+    #[serde(default)]
+    pub shard_id: Option<String>,
+
+    #[serde(default)]
+    pub peers: Option<serde_json::Value>,
+
+    #[serde(default)]
+    pub last_finalized_block_number: Option<u64>,
+
+    #[serde(default)]
+    pub validator: Option<bool>,
+
+    #[serde(default)]
+    pub read_only: Option<bool>,
+
+    #[serde(default)]
+    pub ready: Option<bool>,
+
+    #[serde(default)]
+    pub current_epoch: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RNodeIdentity {
+    #[serde(default)]
+    pub id: Option<String>,
+
+    #[serde(default)]
+    pub host: Option<String>,
+
+    #[serde(default)]
+    pub port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
