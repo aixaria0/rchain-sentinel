@@ -8,12 +8,18 @@ pub struct HealthResponse { pub status: &'static str, pub service: &'static str,
 pub struct RNodeStatusPayload {
     #[serde(default)]
     pub node: Option<RNodeIdentity>,
+    #[serde(default, alias = "address")]
+    pub address: Option<String>,
     #[serde(default, alias = "networkId")]
     pub network_id: Option<String>,
     #[serde(default, alias = "shardId")]
     pub shard_id: Option<String>,
     #[serde(default)]
     pub peers: Option<Value>,
+    #[serde(default)]
+    pub nodes: Option<u64>,
+    #[serde(default, alias = "latestBlockNumber")]
+    pub latest_block_number: Option<u64>,
     #[serde(default, alias = "lastFinalizedBlockNumber")]
     pub last_finalized_block_number: Option<u64>,
     #[serde(default, alias = "isValidator")]
@@ -40,8 +46,8 @@ pub struct RNodeIdentity {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct RNodeObservation { pub node_id: Option<String>, pub host: Option<String>, pub port: Option<u16>, pub network_id: Option<String>, pub shard_id: Option<String>, pub ready: Option<bool>, pub validator: Option<bool>, pub read_only: Option<bool>, pub current_epoch: Option<u64>, pub finalized_block: Option<u64>, pub peer_count: Option<usize> }
-impl RNodeObservation { pub fn from_status(status: &RNodeStatusPayload) -> Self { let peer_count = status.peers.as_ref().map(|peers| match peers { Value::Array(items) => items.len(), Value::Object(map) => map.len(), _ => 0 }); let (node_id, host, port) = match &status.node { Some(node) => (node.id.clone(), node.host.clone(), node.port), None => (None, None, None) }; Self { node_id, host, port, network_id: status.network_id.clone(), shard_id: status.shard_id.clone(), ready: status.ready, validator: status.validator, read_only: status.read_only, current_epoch: status.current_epoch, finalized_block: status.last_finalized_block_number, peer_count } } }
+pub struct RNodeObservation { pub node_id: Option<String>, pub host: Option<String>, pub port: Option<u16>, pub network_id: Option<String>, pub shard_id: Option<String>, pub ready: Option<bool>, pub validator: Option<bool>, pub read_only: Option<bool>, pub current_epoch: Option<u64>, pub finalized_block: Option<u64>, pub latest_block: Option<u64>, pub peer_count: Option<usize> }
+impl RNodeObservation { pub fn from_status(status: &RNodeStatusPayload) -> Self { let peer_count = status.peers.as_ref().map(|peers| match peers { Value::Array(items) => items.len(), Value::Object(map) => map.len(), _ => 0 }); let (node_id, host, port) = match &status.node { Some(node) => (node.id.clone(), node.host.clone(), node.port), None => (status.address.clone(), None, None) }; Self { node_id, host, port, network_id: status.network_id.clone(), shard_id: status.shard_id.clone(), ready: status.ready, validator: status.validator, read_only: status.read_only, current_epoch: status.current_epoch, finalized_block: status.last_finalized_block_number, latest_block: status.latest_block_number, peer_count } } }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FinalizedBlockEvidence { pub available: bool, pub raw: Option<Value>, pub payload_sha256: Option<String>, pub block_hash: Option<String>, pub parent_hash: Option<String>, pub proposer: Option<String>, pub signature: Option<String>, pub justification_present: bool, pub error: Option<String> }
