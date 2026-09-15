@@ -31,7 +31,6 @@ pub struct VerificationEngine;
 impl VerificationEngine {
     pub fn verify_network(status: &NetworkStatus) -> VerificationReport {
         let checks = Self::run_checks(status);
-
         let overall = Self::aggregate_status(&checks);
 
         VerificationReport {
@@ -60,7 +59,7 @@ impl VerificationEngine {
             checks.push(Self::finalized_block_state(rnode));
             checks.push(Self::peer_state(rnode));
         } else {
-            checks.push(Self::rnode_payload_presence(status));
+            checks.push(Self::rnode_payload_presence());
         }
 
         checks
@@ -208,7 +207,7 @@ impl VerificationEngine {
         }
     }
 
-    fn rnode_payload_presence(status: &NetworkStatus) -> EvidenceCheck {
+    fn rnode_payload_presence() -> EvidenceCheck {
         Self::check(
             "rnode_payload",
             VerificationStatus::Warn,
@@ -225,10 +224,7 @@ impl VerificationEngine {
     ) -> EvidenceCheck {
         match &status.node {
             Some(node) => {
-                let identity = node
-                    .id
-                    .as_deref()
-                    .unwrap_or("unknown");
+                let identity = node.id.as_deref().unwrap_or("unknown");
 
                 Self::check(
                     "node_identity",
@@ -237,7 +233,7 @@ impl VerificationEngine {
                     CheckSeverity::Info,
                     "rnode",
                     "node.id",
-                    identity.to_string(),
+                    identity,
                 )
             }
 
@@ -366,28 +362,32 @@ impl VerificationEngine {
         status: &crate::models::RNodeStatusPayload,
     ) -> EvidenceCheck {
         match status.last_finalized_block_number {
-            Some(block) if block > 0 => Self::check(
-                "finalized_block",
-                VerificationStatus::Pass,
-                &format!(
-                    "RNode reports finalized block {}.",
-                    block
-                ),
-                CheckSeverity::Info,
-                "rnode",
-                "last_finalized_block_number",
-                block.to_string(),
-            ),
-
-            Some(0) => Self::check(
-                "finalized_block",
-                VerificationStatus::Warn,
-                "RNode reports no finalized block yet.",
-                CheckSeverity::Warning,
-                "rnode",
-                "last_finalized_block_number",
-                "0",
-            ),
+            Some(block) => {
+                if block > 0 {
+                    Self::check(
+                        "finalized_block",
+                        VerificationStatus::Pass,
+                        &format!(
+                            "RNode reports finalized block {}.",
+                            block
+                        ),
+                        CheckSeverity::Info,
+                        "rnode",
+                        "last_finalized_block_number",
+                        block.to_string(),
+                    )
+                } else {
+                    Self::check(
+                        "finalized_block",
+                        VerificationStatus::Warn,
+                        "RNode reports no finalized block yet.",
+                        CheckSeverity::Warning,
+                        "rnode",
+                        "last_finalized_block_number",
+                        "0",
+                    )
+                }
+            }
 
             None => Self::check_without_evidence(
                 "finalized_block",
@@ -409,23 +409,27 @@ impl VerificationEngine {
                     _ => 0,
                 };
 
-                Self::check(
-                    "peer_state",
-                    if count > 0 {
-                        VerificationStatus::Pass
-                    } else {
-                        VerificationStatus::Warn
-                    },
-                    &format!("RNode reports {} peer entries.", count),
-                    if count > 0 {
-                        CheckSeverity::Info
-                    } else {
-                        CheckSeverity::Warning
-                    },
-                    "rnode",
-                    "peers",
-                    count.to_string(),
-                )
+                if count > 0 {
+                    Self::check(
+                        "peer_state",
+                        VerificationStatus::Pass,
+                        &format!("RNode reports {} peer entries.", count),
+                        CheckSeverity::Info,
+                        "rnode",
+                        "peers",
+                        count.to_string(),
+                    )
+                } else {
+                    Self::check(
+                        "peer_state",
+                        VerificationStatus::Warn,
+                        "RNode reports no peer entries.",
+                        CheckSeverity::Warning,
+                        "rnode",
+                        "peers",
+                        "0",
+                    )
+                }
             }
 
             None => Self::check_without_evidence(
