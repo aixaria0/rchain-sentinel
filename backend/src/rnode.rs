@@ -109,17 +109,15 @@ impl RNodeClient {
         let block_hash = Self::find_string(&raw, &[
             "blockHash", "block_hash", "hash", "id",
         ]);
-        let parent_hash = Self::find_string(&raw, &[
-            "parentHash", "parent_hash", "parentsHash", "parents_hash",
-        ]);
+        let parent_hash = Self::find_parent_hash(&raw);
         let proposer = Self::find_string(&raw, &[
-            "proposer", "sender", "creator", "validator",
+            "sender", "proposer", "creator", "validator",
         ]);
         let signature = Self::find_string(&raw, &[
-            "signature", "sig", "blockSignature", "block_signature",
+            "sig", "signature", "blockSignature", "block_signature",
         ]);
         let justification_present = Self::contains_key(&raw, &[
-            "justification", "justifications", "approvedBlock", "approved_block",
+            "justifications", "justification", "approvedBlock", "approved_block",
         ]);
 
         Ok(crate::models::FinalizedBlockEvidence::available(raw)
@@ -131,6 +129,36 @@ impl RNodeClient {
                 signature,
                 justification_present,
             ))
+    }
+
+    fn find_parent_hash(value: &Value) -> Option<String> {
+        if let Some(parent) = Self::find_string(value, &[
+            "parentHash", "parent_hash", "parentsHash", "parents_hash",
+        ]) {
+            return Some(parent);
+        }
+
+        Self::find_first_array_string(value, &["parents"])
+    }
+
+    fn find_first_array_string(value: &Value, keys: &[&str]) -> Option<String> {
+        match value {
+            Value::Object(map) => {
+                for key in keys {
+                    if let Some(Value::Array(items)) = map.get(*key) {
+                        if let Some(first) = items.iter().find_map(Self::scalar_string) {
+                            return Some(first);
+                        }
+                    }
+                }
+                map.values()
+                    .find_map(|nested| Self::find_first_array_string(nested, keys))
+            }
+            Value::Array(items) => items
+                .iter()
+                .find_map(|item| Self::find_first_array_string(item, keys)),
+            _ => None,
+        }
     }
 
     fn find_string(value: &Value, keys: &[&str]) -> Option<String> {
