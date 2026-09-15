@@ -1,9 +1,11 @@
+mod block_verification;
 mod models;
 mod rnode;
 mod verification;
 
 use axum::{extract::State, routing::get, Json, Router};
 
+use block_verification::BlockVerificationEngine;
 use models::{FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
@@ -51,6 +53,15 @@ async fn verify_network(State(state): State<AppState>) -> Json<VerificationRepor
     Json(report)
 }
 
+async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> {
+    let evidence = match state.rnode.fetch_last_finalized_block_evidence().await {
+        Ok(evidence) => evidence,
+        Err(error) => FinalizedBlockEvidence::unavailable(error),
+    };
+
+    Json(BlockVerificationEngine::verify(&evidence, &state.rnode.target_url()))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -70,6 +81,7 @@ async fn main() {
         .route("/api/network/status", get(network_status))
         .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network))
+        .route("/api/verify/block", get(verify_block))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
