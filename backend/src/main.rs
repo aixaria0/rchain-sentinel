@@ -81,6 +81,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let rnode_url = std::env::var("RCHAIN_RNODE_URL").unwrap_or_else(|_| "http://localhost:40403".to_string());
     let rnode_urls = std::env::var("RCHAIN_RNODE_URLS").ok().map(|value| value.split(',').map(str::trim).filter(|url| !url.is_empty()).map(ToOwned::to_owned).collect::<Vec<_>>()).filter(|urls| !urls.is_empty()).unwrap_or_else(|| vec![rnode_url.clone()]);
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     println!("RChain Sentinel");
     println!("RNode target: {}", rnode_url);
     println!("Cross-node targets: {}", rnode_urls.len());
@@ -99,7 +100,8 @@ async fn main() {
         .route("/api/is-finalized/{hash}", get(is_finalized))
         .with_state(state)
         .layer(CorsLayer::permissive());
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.expect("failed to bind server");
-    println!("Listening on http://0.0.0.0:8080");
+    let bind_address = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&bind_address).await.expect("failed to bind server");
+    println!("Listening on http://{}", bind_address);
     axum::serve(listener, app).await.expect("server failed");
 }
