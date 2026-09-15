@@ -2,20 +2,9 @@ mod models;
 mod rnode;
 mod verification;
 
-use axum::{
-    extract::State,
-    routing::get,
-    Json,
-    Router,
-};
+use axum::{extract::State, routing::get, Json, Router};
 
-use models::{
-    FinalizedBlockEvidence,
-    HealthResponse,
-    NetworkStatus,
-    VerificationReport,
-};
-
+use models::{FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
 
@@ -35,27 +24,30 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-async fn network_status(
-    State(state): State<AppState>,
-) -> Json<NetworkStatus> {
+async fn network_status(State(state): State<AppState>) -> Json<NetworkStatus> {
     Json(state.rnode.status().await)
 }
 
-async fn verify_network(
+async fn finalized_block_evidence(
     State(state): State<AppState>,
-) -> Json<VerificationReport> {
-    let network_status = state.rnode.status().await;
-
-    let finalized_block = match state.rnode.fetch_last_finalized_block().await {
-        Ok(raw) => FinalizedBlockEvidence::available(raw),
+) -> Json<FinalizedBlockEvidence> {
+    let evidence = match state.rnode.fetch_last_finalized_block_evidence().await {
+        Ok(evidence) => evidence,
         Err(error) => FinalizedBlockEvidence::unavailable(error),
     };
 
-    let report = VerificationEngine::verify_network(
-        &network_status,
-        &finalized_block,
-    );
+    Json(evidence)
+}
 
+async fn verify_network(State(state): State<AppState>) -> Json<VerificationReport> {
+    let network_status = state.rnode.status().await;
+
+    let finalized_block = match state.rnode.fetch_last_finalized_block_evidence().await {
+        Ok(evidence) => evidence,
+        Err(error) => FinalizedBlockEvidence::unavailable(error),
+    };
+
+    let report = VerificationEngine::verify_network(&network_status, &finalized_block);
     Json(report)
 }
 
@@ -64,43 +56,28 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let rnode_url = std::env::var("RCHAIN_RNODE_URL")
-        .unwrap_or_else(|_| {
-            "http://localhost:40403".to_string()
-        });
+        .unwrap_or_else(|_| "http://localhost:40403".to_string());
 
     println!("RChain Sentinel");
     println!("RNode target: {}", rnode_url);
 
     let state = AppState {
-        rnode: Arc::new(
-            RNodeClient::new(rnode_url)
-        ),
+        rnode: Arc::new(RNodeClient::new(rnode_url)),
     };
 
     let app = Router::new()
-        .route(
-            "/health",
-            get(health),
-        )
-        .route(
-            "/api/network/status",
-            get(network_status),
-        )
-        .route(
-            "/api/verify",
-            get(verify_network),
-        )
+        .route("/health", get(health))
+        .route("/api/network/status", get(network_status))
+        .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
+        .route("/api/verify", get(verify_network))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
-    let listener =
-        tokio::net::TcpListener::bind("0.0.0.0:8080")
-            .await
-            .expect("failed to bind server");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+        .await
+        .expect("failed to bind server");
 
-    println!(
-        "Listening on http://0.0.0.0:8080"
-    );
+    println!("Listening on http://0.0.0.0:8080");
 
     axum::serve(listener, app)
         .await
