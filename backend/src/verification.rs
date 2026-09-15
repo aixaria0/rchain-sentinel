@@ -1,10 +1,13 @@
 use crate::models::{
+    FinalizedBlockEvidence,
     NetworkStatus,
     RNodeObservation,
     VerificationCheck,
     VerificationReport,
     VerificationStatus,
 };
+
+use serde_json::Value;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct VerificationEvidence {
@@ -30,8 +33,11 @@ pub struct EvidenceCheck {
 pub struct VerificationEngine;
 
 impl VerificationEngine {
-    pub fn verify_network(status: &NetworkStatus) -> VerificationReport {
-        let checks = Self::run_checks(status);
+    pub fn verify_network(
+        status: &NetworkStatus,
+        finalized_block: &FinalizedBlockEvidence,
+    ) -> VerificationReport {
+        let checks = Self::run_checks(status, finalized_block);
         let overall = Self::aggregate_status(&checks);
 
         VerificationReport {
@@ -44,12 +50,19 @@ impl VerificationEngine {
         }
     }
 
-    pub fn run_checks(status: &NetworkStatus) -> Vec<EvidenceCheck> {
+    pub fn run_checks(
+        status: &NetworkStatus,
+        finalized_block: &FinalizedBlockEvidence,
+    ) -> Vec<EvidenceCheck> {
         let mut checks = vec![
             Self::reachability(status),
             Self::http_status(status),
             Self::latency(status),
             Self::probe_integrity(status),
+            Self::finalized_block_cross_check(
+                status,
+                finalized_block,
+            ),
         ];
 
         if let Some(rnode) = &status.rnode {
@@ -70,23 +83,214 @@ impl VerificationEngine {
         checks
     }
 
-    fn aggregate_status(checks: &[EvidenceCheck]) -> VerificationStatus {
-        if checks
-            .iter()
-            .any(|c| matches!(c.check.status, VerificationStatus::Fail))
-        {
+    fn aggregate_status(
+        checks: &[EvidenceCheck],
+    ) -> VerificationStatus {
+        if checks.iter().any(|c| {
+            matches!(c.check.status, VerificationStatus::Fail)
+        }) {
             VerificationStatus::Fail
-        } else if checks
-            .iter()
-            .any(|c| matches!(c.check.status, VerificationStatus::Warn))
-        {
+        } else if checks.iter().any(|c| {
+            matches!(c.check.status, VerificationStatus::Warn)
+        }) {
             VerificationStatus::Warn
         } else {
             VerificationStatus::Pass
         }
     }
 
-    fn reachability(status: &NetworkStatus) -> EvidenceCheck {
+    fn finalized_block_cross_check(
+        status: &NetworkStatus,
+        evidence: &FinalizedBlockEvidence,
+    ) -> EvidenceCheck {
+        let status_height = status
+            .rnode
+            .as_ref()
+            .and_then(|rnode| {
+                rnode.last_finalized_block_number
+            });
+
+        if !evidence.available {
+            return Self::check(
+                "finalized_block_cross_check",
+                VerificationStatus::Warn,
+                evidence
+                    .error
+                    .as_deref()
+                    .unwrap_or(
+                        "Independent finalized-block evidence is unavailable.",
+                    ),
+                CheckSeverity::Warning,
+                "last-finalized-block",
+                "available",
+                "false",
+            );
+        }
+
+        let raw = match &evidence.raw {
+            Some(value) => value,
+            None => {
+                return Self::check(
+                    "finalized_block_cross_check",
+                    VerificationStatus::Warn,
+                    "Finalized-block endpoint responded, but returned no evidence payload.",
+                    CheckSeverity::Warning,
+                    "last-finalized-block",
+                    "payload",
+                    "missing",
+                );
+            }
+        };
+
+        let evidence_height = Self::extract_block_height(raw);
+
+        match (status_height, evidence_height) {
+            (Some(status_height), Some(evidence_height)) => {
+                if status_height == evidence_height {
+                    Self::check(
+                        "finalized_block_cross_check",
+                        VerificationStatus::Pass,
+                        &format!(
+                            "Finalized block height matches across independent RNode evidence paths: {}.",
+                            status_height
+                        ),
+                        CheckSeverity::Info,
+                        "cross-check",
+                        "finalized_block_height",
+                        format!(
+                            "status={}, evidence={}",
+                            status_height,
+                            evidence_height
+                        ),
+                    )
+                } else {
+                    Self::check(
+                        "finalized_block_cross_check",
+                        VerificationStatus::Fail,
+                        &format!(
+                            "Finalized block height mismatch: status reports {}, while last-finalized-block reports {}.",
+                            status_height,
+                            evidence_height
+                        ),
+                        CheckSeverity::Critical,
+                        "cross-check",
+                        "finalized_block_height",
+                        format!(
+                            "status={}, evidence={}",
+                            status_height,
+                            evidence_height
+                        ),
+                    )
+                }
+            }
+
+            (Some(status_height), None) => Self::check(
+                "finalized_block_cross_check",
+                VerificationStatus::Warn,
+                &format!(
+                    "RNode status reports finalized block {}, but no comparable block height could be extracted from the independent evidence.",
+                    status_height
+                ),
+                CheckSeverity::Warning,
+                "cross-check",
+                "status_finalized_block",
+                status_height.to_string(),
+            ),
+
+            (None, Some(evidence_height)) => Self::check(
+                "finalized_block_cross_check",
+                VerificationStatus::Warn,
+                &format!(
+                    "Independent evidence reports finalized block {}, but RNode status does not expose a comparable height.",
+                    evidence_height
+                ),
+                CheckSeverity::Warning,
+                "cross-check",
+                "evidence_finalized_block",
+                evidence_height.to_string(),
+            ),
+
+            (None, None) => Self::check(
+                "finalized_block_cross_check",
+                VerificationStatus::Warn,
+                "Both verification paths lack a comparable finalized block height.",
+                CheckSeverity::Warning,
+                "cross-check",
+                "finalized_block_height",
+                "unavailable",
+            ),
+        }
+    }
+
+    fn extract_block_height(value: &Value) -> Option<u64> {
+        match value {
+            Value::Number(number) => number.as_u64(),
+
+            Value::Object(map) => {
+                let keys = [
+                    "blockNumber",
+                    "block_number",
+                    "height",
+                    "blockHeight",
+                    "block_height",
+                    "seqNum",
+                    "seq_num",
+                ];
+
+                for key in keys {
+                    if let Some(value) = map.get(key) {
+                        if let Some(height) =
+                            Self::value_as_u64(value)
+                        {
+                            return Some(height);
+                        }
+                    }
+                }
+
+                for key in ["block", "header", "metadata"] {
+                    if let Some(nested) = map.get(key) {
+                        if let Some(height) =
+                            Self::extract_block_height(nested)
+                        {
+                            return Some(height);
+                        }
+                    }
+                }
+
+                None
+            }
+
+            Value::Array(items) => {
+                for item in items {
+                    if let Some(height) =
+                        Self::extract_block_height(item)
+                    {
+                        return Some(height);
+                    }
+                }
+
+                None
+            }
+
+            _ => None,
+        }
+    }
+
+    fn value_as_u64(value: &Value) -> Option<u64> {
+        match value {
+            Value::Number(number) => number.as_u64(),
+
+            Value::String(text) => {
+                text.parse::<u64>().ok()
+            }
+
+            _ => None,
+        }
+    }
+
+    fn reachability(
+        status: &NetworkStatus,
+    ) -> EvidenceCheck {
         if status.reachable {
             Self::check(
                 "node_reachable",
@@ -113,22 +317,32 @@ impl VerificationEngine {
         }
     }
 
-    fn http_status(status: &NetworkStatus) -> EvidenceCheck {
+    fn http_status(
+        status: &NetworkStatus,
+    ) -> EvidenceCheck {
         match status.http_status {
-            Some(code) if (200..300).contains(&code) => Self::check(
-                "http_status",
-                VerificationStatus::Pass,
-                &format!("HTTP response {} is successful.", code),
-                CheckSeverity::Info,
-                "http",
-                "status_code",
-                code.to_string(),
-            ),
+            Some(code) if (200..300).contains(&code) => {
+                Self::check(
+                    "http_status",
+                    VerificationStatus::Pass,
+                    &format!(
+                        "HTTP response {} is successful.",
+                        code
+                    ),
+                    CheckSeverity::Info,
+                    "http",
+                    "status_code",
+                    code.to_string(),
+                )
+            }
 
             Some(code) => Self::check(
                 "http_status",
                 VerificationStatus::Fail,
-                &format!("Unexpected HTTP response {}.", code),
+                &format!(
+                    "Unexpected HTTP response {}.",
+                    code
+                ),
                 CheckSeverity::Critical,
                 "http",
                 "status_code",
@@ -144,12 +358,17 @@ impl VerificationEngine {
         }
     }
 
-    fn latency(status: &NetworkStatus) -> EvidenceCheck {
+    fn latency(
+        status: &NetworkStatus,
+    ) -> EvidenceCheck {
         match status.latency_ms {
             Some(ms) if ms <= 500 => Self::check(
                 "latency",
                 VerificationStatus::Pass,
-                &format!("Probe latency is {} ms.", ms),
+                &format!(
+                    "Probe latency is {} ms.",
+                    ms
+                ),
                 CheckSeverity::Info,
                 "rnode",
                 "latency_ms",
@@ -159,7 +378,10 @@ impl VerificationEngine {
             Some(ms) if ms <= 1500 => Self::check(
                 "latency",
                 VerificationStatus::Warn,
-                &format!("Probe latency is elevated at {} ms.", ms),
+                &format!(
+                    "Probe latency is elevated at {} ms.",
+                    ms
+                ),
                 CheckSeverity::Warning,
                 "rnode",
                 "latency_ms",
@@ -169,7 +391,10 @@ impl VerificationEngine {
             Some(ms) => Self::check(
                 "latency",
                 VerificationStatus::Fail,
-                &format!("Probe latency is critically high at {} ms.", ms),
+                &format!(
+                    "Probe latency is critically high at {} ms.",
+                    ms
+                ),
                 CheckSeverity::Critical,
                 "rnode",
                 "latency_ms",
@@ -185,7 +410,9 @@ impl VerificationEngine {
         }
     }
 
-    fn probe_integrity(status: &NetworkStatus) -> EvidenceCheck {
+    fn probe_integrity(
+        status: &NetworkStatus,
+    ) -> EvidenceCheck {
         let valid = status.probe.starts_with("http://")
             || status.probe.starts_with("https://");
 
@@ -224,28 +451,26 @@ impl VerificationEngine {
         )
     }
 
-    fn node_identity(observation: &RNodeObservation) -> EvidenceCheck {
+    fn node_identity(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match &observation.node_id {
-            Some(id) => {
-                if !id.is_empty() {
-                    Self::check(
-                        "node_identity",
-                        VerificationStatus::Pass,
-                        "RNode identity is available.",
-                        CheckSeverity::Info,
-                        "observation",
-                        "node_id",
-                        id.clone(),
-                    )
-                } else {
-                    Self::check_without_evidence(
-                        "node_identity",
-                        VerificationStatus::Warn,
-                        "RNode identity is empty.",
-                        CheckSeverity::Warning,
-                    )
-                }
-            }
+            Some(id) if !id.is_empty() => Self::check(
+                "node_identity",
+                VerificationStatus::Pass,
+                "RNode identity is available.",
+                CheckSeverity::Info,
+                "observation",
+                "node_id",
+                id.clone(),
+            ),
+
+            Some(_) => Self::check_without_evidence(
+                "node_identity",
+                VerificationStatus::Warn,
+                "RNode identity is empty.",
+                CheckSeverity::Warning,
+            ),
 
             None => Self::check_without_evidence(
                 "node_identity",
@@ -256,7 +481,9 @@ impl VerificationEngine {
         }
     }
 
-    fn network_identity(observation: &RNodeObservation) -> EvidenceCheck {
+    fn network_identity(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match (
             observation.network_id.as_deref(),
             observation.shard_id.as_deref(),
@@ -270,7 +497,8 @@ impl VerificationEngine {
                 "network/shard",
                 format!(
                     "network_id={}, shard_id={}",
-                    network, shard
+                    network,
+                    shard
                 ),
             ),
 
@@ -303,7 +531,9 @@ impl VerificationEngine {
         }
     }
 
-    fn readiness(observation: &RNodeObservation) -> EvidenceCheck {
+    fn readiness(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match observation.ready {
             Some(true) => Self::check(
                 "node_readiness",
@@ -334,7 +564,9 @@ impl VerificationEngine {
         }
     }
 
-    fn validator_state(observation: &RNodeObservation) -> EvidenceCheck {
+    fn validator_state(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match observation.validator {
             Some(true) => Self::check(
                 "validator_state",
@@ -369,32 +601,28 @@ impl VerificationEngine {
         observation: &RNodeObservation,
     ) -> EvidenceCheck {
         match observation.finalized_block {
-            Some(block) => {
-                if block > 0 {
-                    Self::check(
-                        "finalized_block",
-                        VerificationStatus::Pass,
-                        &format!(
-                            "RNode reports finalized block {}.",
-                            block
-                        ),
-                        CheckSeverity::Info,
-                        "observation",
-                        "finalized_block",
-                        block.to_string(),
-                    )
-                } else {
-                    Self::check(
-                        "finalized_block",
-                        VerificationStatus::Warn,
-                        "RNode reports no finalized block yet.",
-                        CheckSeverity::Warning,
-                        "observation",
-                        "finalized_block",
-                        "0",
-                    )
-                }
-            }
+            Some(block) if block > 0 => Self::check(
+                "finalized_block",
+                VerificationStatus::Pass,
+                &format!(
+                    "RNode reports finalized block {}.",
+                    block
+                ),
+                CheckSeverity::Info,
+                "observation",
+                "finalized_block",
+                block.to_string(),
+            ),
+
+            Some(_) => Self::check(
+                "finalized_block",
+                VerificationStatus::Warn,
+                "RNode reports no finalized block yet.",
+                CheckSeverity::Warning,
+                "observation",
+                "finalized_block",
+                "0",
+            ),
 
             None => Self::check_without_evidence(
                 "finalized_block",
@@ -405,34 +633,32 @@ impl VerificationEngine {
         }
     }
 
-    fn peer_state(observation: &RNodeObservation) -> EvidenceCheck {
+    fn peer_state(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match observation.peer_count {
-            Some(count) => {
-                if count > 0 {
-                    Self::check(
-                        "peer_state",
-                        VerificationStatus::Pass,
-                        &format!(
-                            "RNode reports {} peer entries.",
-                            count
-                        ),
-                        CheckSeverity::Info,
-                        "observation",
-                        "peer_count",
-                        count.to_string(),
-                    )
-                } else {
-                    Self::check(
-                        "peer_state",
-                        VerificationStatus::Warn,
-                        "RNode reports no peer entries.",
-                        CheckSeverity::Warning,
-                        "observation",
-                        "peer_count",
-                        "0",
-                    )
-                }
-            }
+            Some(count) if count > 0 => Self::check(
+                "peer_state",
+                VerificationStatus::Pass,
+                &format!(
+                    "RNode reports {} peer entries.",
+                    count
+                ),
+                CheckSeverity::Info,
+                "observation",
+                "peer_count",
+                count.to_string(),
+            ),
+
+            Some(_) => Self::check(
+                "peer_state",
+                VerificationStatus::Warn,
+                "RNode reports no peer entries.",
+                CheckSeverity::Warning,
+                "observation",
+                "peer_count",
+                "0",
+            ),
 
             None => Self::check_without_evidence(
                 "peer_state",
@@ -443,7 +669,9 @@ impl VerificationEngine {
         }
     }
 
-    fn epoch_state(observation: &RNodeObservation) -> EvidenceCheck {
+    fn epoch_state(
+        observation: &RNodeObservation,
+    ) -> EvidenceCheck {
         match observation.current_epoch {
             Some(epoch) => Self::check(
                 "epoch_state",
@@ -470,15 +698,21 @@ impl VerificationEngine {
     fn observation_integrity(
         observation: &RNodeObservation,
     ) -> EvidenceCheck {
-        let identity_present = observation.node_id.is_some();
-        let network_present = observation.network_id.is_some();
+        let identity_present =
+            observation.node_id.is_some();
+
+        let network_present =
+            observation.network_id.is_some();
 
         let state_present =
             observation.ready.is_some()
                 || observation.validator.is_some()
                 || observation.finalized_block.is_some();
 
-        if identity_present && network_present && state_present {
+        if identity_present
+            && network_present
+            && state_present
+        {
             Self::check(
                 "observation_integrity",
                 VerificationStatus::Pass,
@@ -517,11 +751,13 @@ impl VerificationEngine {
                 message: message.to_string(),
             },
             severity,
-            evidence: vec![VerificationEvidence {
-                source: source.to_string(),
-                field: field.to_string(),
-                value: value.into(),
-            }],
+            evidence: vec![
+                VerificationEvidence {
+                    source: source.to_string(),
+                    field: field.to_string(),
+                    value: value.into(),
+                }
+            ],
         }
     }
 
