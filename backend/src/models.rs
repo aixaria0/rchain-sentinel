@@ -22,6 +22,8 @@ pub struct CrossNodeReport { pub target_count: usize, pub reachable_count: usize
 #[derive(Debug, Clone, Serialize)]
 pub struct CasperEvidenceReport { pub evidence_available: bool, pub protocol_block_shape: bool, pub validator_identity_present: bool, pub stake_weight_present: bool, pub bond_count: usize, pub total_observed_stake: Option<i64>, pub duplicate_validator_count: usize, pub invalid_bond_count: usize, pub bond_structure_valid: bool, pub bet_present: bool, pub justification_present: bool, pub justification_count: usize, pub justification_structure_valid: bool, pub malformed_justification_count: usize, pub equivocation_signal: bool, pub recognized_fields: Vec<String>, pub status: String, pub verification_basis: String }
 #[derive(Debug, Clone, Serialize)]
+pub struct ExplorerBlockReport { pub network: NetworkStatus, pub block: FinalizedBlockEvidence, pub block_verification: VerificationReport, pub casper: CasperEvidenceReport, pub cross_node: CrossNodeReport, pub explanation: Vec<String> }
+#[derive(Debug, Clone, Serialize)]
 pub enum VerificationStatus { Pass, Warn, Fail }
 #[derive(Debug, Clone, Serialize)]
 pub enum CheckSeverity { Info, Warning, Critical }
