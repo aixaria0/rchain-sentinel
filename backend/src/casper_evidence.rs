@@ -23,18 +23,18 @@ impl CasperEvidenceEngine {
             && Self::has(block, "sig");
 
         let validator_identity_present = Self::has(block, "sender") || Self::has(block, "proposer") || Self::has(block, "validator");
-        let justifications = Self::array_len(block, "justifications");
+        let justifications = Self::justification_stats(block);
         let bonds = Self::bond_stats(block);
-        let stake_weight_present = bonds.0 > 0;
+        let stake_weight_present = bonds.valid_count > 0;
         let equivocation_signal = Self::contains_any(raw, &["equivocation", "equivocated", "doubleVote", "double_vote", "conflictingBets", "conflicting_bets"]);
         let bet_present = Self::contains_any(raw, &["bet", "bets", "belief", "beliefs", "proposition", "propositions", "claim"]);
 
         let (status, basis) = if equivocation_signal {
             ("warning", "possible equivocation signal observed; protocol-level validation is required")
-        } else if protocol_block_shape && validator_identity_present && stake_weight_present && justifications > 0 {
-            ("observed", "RChain BlockMessage-shaped evidence observed: sender, bonds/stakes, justifications and signature; this is not by itself a Casper finality proof")
-        } else if validator_identity_present || stake_weight_present || justifications > 0 {
-            ("partial", "some RChain Casper block evidence was observed, but the complete protocol evidence set is not present")
+        } else if protocol_block_shape && validator_identity_present && stake_weight_present && justifications.count > 0 && bonds.structure_valid && justifications.structure_valid {
+            ("observed", "RChain BlockMessage-shaped evidence observed with structurally valid bonds and justifications; this is not by itself a Casper finality proof")
+        } else if validator_identity_present || stake_weight_present || justifications.count > 0 {
+            ("partial", "some RChain Casper evidence was observed, but the complete or structurally consistent protocol evidence set is not present")
         } else {
             ("insufficient", "the payload does not expose enough RChain Casper protocol evidence for stake-weighted analysis")
         };
@@ -44,11 +44,16 @@ impl CasperEvidenceEngine {
             protocol_block_shape,
             validator_identity_present,
             stake_weight_present,
-            bond_count: bonds.0,
-            total_observed_stake: bonds.1,
+            bond_count: bonds.valid_count,
+            total_observed_stake: bonds.total_stake,
+            duplicate_validator_count: bonds.duplicate_validator_count,
+            invalid_bond_count: bonds.invalid_count,
+            bond_structure_valid: bonds.structure_valid,
             bet_present,
-            justification_present: justifications > 0,
-            justification_count: justifications,
+            justification_present: justifications.count > 0,
+            justification_count: justifications.count,
+            justification_structure_valid: justifications.structure_valid,
+            malformed_justification_count: justifications.malformed_count,
             equivocation_signal,
             recognized_fields,
             status: status.to_string(),
@@ -57,7 +62,26 @@ impl CasperEvidenceEngine {
     }
 
     fn empty(reason: &str) -> CasperEvidenceReport {
-        CasperEvidenceReport { evidence_available: false, protocol_block_shape: false, validator_identity_present: false, stake_weight_present: false, bond_count: 0, total_observed_stake: None, bet_present: false, justification_present: false, justification_count: 0, equivocation_signal: false, recognized_fields: Vec::new(), status: "unavailable".to_string(), verification_basis: reason.to_string() }
+        CasperEvidenceReport {
+            evidence_available: false,
+            protocol_block_shape: false,
+            validator_identity_present: false,
+            stake_weight_present: false,
+            bond_count: 0,
+            total_observed_stake: None,
+            duplicate_validator_count: 0,
+            invalid_bond_count: 0,
+            bond_structure_valid: false,
+            bet_present: false,
+            justification_present: false,
+            justification_count: 0,
+            justification_structure_valid: false,
+            malformed_justification_count: 0,
+            equivocation_signal: false,
+            recognized_fields: Vec::new(),
+            status: "unavailable".to_string(),
+            verification_basis: reason.to_string(),
+        }
     }
 
     fn find_block<'a>(value: &'a Value) -> Option<&'a Value> {
@@ -73,20 +97,58 @@ impl CasperEvidenceEngine {
 
     fn has(value: &Value, key: &str) -> bool { matches!(value, Value::Object(map) if map.contains_key(key)) }
 
-    fn array_len(value: &Value, key: &str) -> usize {
-        match value { Value::Object(map) => map.get(key).and_then(Value::as_array).map_or(0, Vec::len), _ => 0 }
+    fn justification_stats(value: &Value) -> JustificationStats {
+        let Some(Value::Array(items)) = (match value { Value::Object(map) => map.get("justifications"), _ => None }) else {
+            return JustificationStats::default();
+        };
+        let mut malformed_count = 0usize;
+        for item in items {
+            let valid = match item {
+                Value::Object(map) => !map.is_empty(),
+                Value::String(text) => !text.trim().is_empty(),
+                Value::Array(_) => true,
+                _ => false,
+            };
+            if !valid { malformed_count += 1; }
+        }
+        JustificationStats {
+            count: items.len(),
+            malformed_count,
+            structure_valid: !items.is_empty() && malformed_count == 0,
+        }
     }
 
-    fn bond_stats(value: &Value) -> (usize, Option<i64>) {
-        let Some(Value::Array(bonds)) = (match value { Value::Object(map) => map.get("bonds"), _ => None }) else { return (0, None); };
+    fn bond_stats(value: &Value) -> BondStats {
+        let Some(Value::Array(bonds)) = (match value { Value::Object(map) => map.get("bonds"), _ => None }) else {
+            return BondStats::default();
+        };
         let mut total = 0i64;
         let mut valid = 0usize;
+        let mut invalid = 0usize;
+        let mut validators = BTreeSet::new();
+        let mut duplicate_validator_count = 0usize;
         for bond in bonds {
             if let Value::Object(map) = bond {
-                if map.get("validator").is_some() && map.get("stake").and_then(Value::as_i64).is_some() { valid += 1; total += map.get("stake").and_then(Value::as_i64).unwrap_or(0); }
+                let validator = map.get("validator").and_then(Value::as_str).filter(|v| !v.trim().is_empty());
+                let stake = map.get("stake").and_then(Value::as_i64);
+                if let (Some(validator), Some(stake)) = (validator, stake) {
+                    valid += 1;
+                    total += stake;
+                    if !validators.insert(validator.to_string()) { duplicate_validator_count += 1; }
+                } else {
+                    invalid += 1;
+                }
+            } else {
+                invalid += 1;
             }
         }
-        (valid, (valid > 0).then_some(total))
+        BondStats {
+            valid_count: valid,
+            total_stake: (valid > 0).then_some(total),
+            duplicate_validator_count,
+            invalid_count: invalid,
+            structure_valid: !bonds.is_empty() && invalid == 0 && duplicate_validator_count == 0 && valid == bonds.len(),
+        }
     }
 
     fn contains_any(value: &Value, keys: &[&str]) -> bool {
@@ -100,6 +162,18 @@ impl CasperEvidenceEngine {
     fn is_protocol_key(key: &str) -> bool {
         ["blockHash", "blockNumber", "sender", "seqNum", "shardId", "preStateHash", "postStateHash", "justifications", "bonds", "validator", "stake", "sigAlgorithm", "sig", "fringe", "memberOfFringe", "validated", "validationFailed"].contains(&key)
     }
+}
+
+#[derive(Default)]
+struct JustificationStats { count: usize, malformed_count: usize, structure_valid: bool }
+
+#[derive(Default)]
+struct BondStats {
+    valid_count: usize,
+    total_stake: Option<i64>,
+    duplicate_validator_count: usize,
+    invalid_count: usize,
+    structure_valid: bool,
 }
 
 #[cfg(test)]
@@ -122,8 +196,31 @@ mod tests {
         assert_eq!(report.bond_count, 2);
         assert_eq!(report.total_observed_stake, Some(300));
         assert_eq!(report.justification_count, 2);
+        assert!(report.bond_structure_valid);
+        assert!(report.justification_structure_valid);
         assert_eq!(report.status, "observed");
         assert!(report.verification_basis.contains("not by itself a Casper finality proof"));
+    }
+
+    #[test]
+    fn detects_duplicate_and_invalid_bonds() {
+        let evidence = FinalizedBlockEvidence::available(json!({"blockHash":"abc", "bonds":[
+            {"validator":"v1","stake":100}, {"validator":"v1","stake":200}, {"validator":"v2"}
+        ]}));
+        let report = CasperEvidenceEngine::analyze(&evidence);
+        assert_eq!(report.bond_count, 2);
+        assert_eq!(report.duplicate_validator_count, 1);
+        assert_eq!(report.invalid_bond_count, 1);
+        assert!(!report.bond_structure_valid);
+    }
+
+    #[test]
+    fn detects_malformed_justifications() {
+        let evidence = FinalizedBlockEvidence::available(json!({"blockHash":"abc", "justifications":["ok", null, {"validator":"v1"}]}));
+        let report = CasperEvidenceEngine::analyze(&evidence);
+        assert_eq!(report.justification_count, 3);
+        assert_eq!(report.malformed_justification_count, 1);
+        assert!(!report.justification_structure_valid);
     }
 
     #[test]
