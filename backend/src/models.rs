@@ -16,3 +16,24 @@ pub struct NetworkStatus {
     pub probe: String,
     pub error: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub enum VerificationStatus {
+    Pass,
+    Warn,
+    Fail,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationCheck {
+    pub name: String,
+    pub status: VerificationStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationReport {
+    pub target: String,
+    pub status: VerificationStatus,
+    pub checks: Vec<VerificationCheck>,
+}
