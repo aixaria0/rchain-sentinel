@@ -1,130 +1,115 @@
-use serde::{Deserialize, Serialize};
+use crate::models::{NetworkStatus, RNodeStatusPayload};
+use reqwest::Client;
+use serde_json::Value;
 
-#[derive(Debug, Serialize)]
-pub struct HealthResponse {
-    pub status: &'static str,
-    pub service: &'static str,
-    pub version: &'static str,
+#[derive(Clone)]
+pub struct RNodeClient {
+    client: Client,
+    base_url: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct NetworkStatus {
-    pub reachable: bool,
-    pub node_url: String,
-    pub latency_ms: Option<u128>,
-    pub http_status: Option<u16>,
-    pub probe: String,
-    pub error: Option<String>,
-    pub rnode: Option<RNodeStatusPayload>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RNodeStatusPayload {
-    #[serde(default)]
-    pub node: Option<RNodeIdentity>,
-
-    #[serde(default)]
-    pub network_id: Option<String>,
-
-    #[serde(default)]
-    pub shard_id: Option<String>,
-
-    #[serde(default)]
-    pub peers: Option<serde_json::Value>,
-
-    #[serde(default)]
-    pub last_finalized_block_number: Option<u64>,
-
-    #[serde(default)]
-    pub validator: Option<bool>,
-
-    #[serde(default)]
-    pub read_only: Option<bool>,
-
-    #[serde(default)]
-    pub ready: Option<bool>,
-
-    #[serde(default)]
-    pub current_epoch: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RNodeIdentity {
-    #[serde(default)]
-    pub id: Option<String>,
-
-    #[serde(default)]
-    pub host: Option<String>,
-
-    #[serde(default)]
-    pub port: Option<u16>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct RNodeObservation {
-    pub node_id: Option<String>,
-    pub host: Option<String>,
-    pub port: Option<u16>,
-    pub network_id: Option<String>,
-    pub shard_id: Option<String>,
-    pub ready: Option<bool>,
-    pub validator: Option<bool>,
-    pub read_only: Option<bool>,
-    pub current_epoch: Option<u64>,
-    pub finalized_block: Option<u64>,
-    pub peer_count: Option<usize>,
-}
-
-impl RNodeObservation {
-    pub fn from_status(status: &RNodeStatusPayload) -> Self {
-        let peer_count = status.peers.as_ref().map(|peers| match peers {
-            serde_json::Value::Array(items) => items.len(),
-            serde_json::Value::Object(map) => map.len(),
-            _ => 0,
-        });
-
-        let (node_id, host, port) = match &status.node {
-            Some(node) => (
-                node.id.clone(),
-                node.host.clone(),
-                node.port,
-            ),
-            None => (None, None, None),
-        };
-
+impl RNodeClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
         Self {
-            node_id,
-            host,
-            port,
-            network_id: status.network_id.clone(),
-            shard_id: status.shard_id.clone(),
-            ready: status.ready,
-            validator: status.validator,
-            read_only: status.read_only,
-            current_epoch: status.current_epoch,
-            finalized_block: status.last_finalized_block_number,
-            peer_count,
+            client: Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
         }
     }
-}
 
-#[derive(Debug, Clone, Serialize)]
-pub enum VerificationStatus {
-    Pass,
-    Warn,
-    Fail,
-}
+    pub async fn status(&self) -> NetworkStatus {
+        let start = std::time::Instant::now();
+        let url = format!("{}/api/status", self.base_url);
 
-#[derive(Debug, Clone, Serialize)]
-pub struct VerificationCheck {
-    pub name: String,
-    pub status: VerificationStatus,
-    pub message: String,
-}
+        match self.client.get(&url).send().await {
+            Ok(response) => {
+                let http_status = response.status().as_u16();
+                let latency_ms = start.elapsed().as_millis();
 
-#[derive(Debug, Clone, Serialize)]
-pub struct VerificationReport {
-    pub target: String,
-    pub status: VerificationStatus,
-    pub checks: Vec<VerificationCheck>,
+                if !response.status().is_success() {
+                    return NetworkStatus {
+                        reachable: false,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode returned HTTP {}",
+                            http_status
+                        )),
+                        rnode: None,
+                    };
+                }
+
+                match response.json::<RNodeStatusPayload>().await {
+                    Ok(payload) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: None,
+                        rnode: Some(payload),
+                    },
+
+                    Err(error) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode response parsing failed: {}",
+                            error
+                        )),
+                        rnode: None,
+                    },
+                }
+            }
+
+            Err(error) => NetworkStatus {
+                reachable: false,
+                node_url: self.base_url.clone(),
+                latency_ms: None,
+                http_status: None,
+                probe: url,
+                error: Some(error.to_string()),
+                rnode: None,
+            },
+        }
+    }
+
+    pub async fn fetch_last_finalized_block(
+        &self,
+    ) -> Result<Value, String> {
+        let url = format!(
+            "{}/api/last-finalized-block",
+            self.base_url
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            return Err(format!(
+                "Last-finalized-block endpoint returned HTTP {}",
+                status.as_u16()
+            ));
+        }
+
+        response
+            .json::<Value>()
+            .await
+            .map_err(|error| {
+                format!(
+                    "Failed to parse last-finalized-block response: {}",
+                    error
+                )
+            })
+    }
 }
