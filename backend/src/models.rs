@@ -85,16 +85,32 @@ impl RNodeObservation {
 pub struct FinalizedBlockEvidence {
     pub available: bool,
     pub raw: Option<Value>,
+    pub payload_sha256: Option<String>,
     pub error: Option<String>,
 }
 
 impl FinalizedBlockEvidence {
     pub fn unavailable(error: impl Into<String>) -> Self {
-        Self { available: false, raw: None, error: Some(error.into()) }
+        Self {
+            available: false,
+            raw: None,
+            payload_sha256: None,
+            error: Some(error.into()),
+        }
     }
 
     pub fn available(raw: Value) -> Self {
-        Self { available: true, raw: Some(raw), error: None }
+        Self {
+            available: true,
+            raw: Some(raw),
+            payload_sha256: None,
+            error: None,
+        }
+    }
+
+    pub fn with_sha256(mut self, digest: String) -> Self {
+        self.payload_sha256 = Some(digest);
+        self
     }
 }
 
