@@ -1,5 +1,7 @@
 mod models;
 mod rnode;
+mod verifier;
+mod verification;
 
 use axum::{
     extract::State,
@@ -8,8 +10,14 @@ use axum::{
     Router,
 };
 
-use models::{HealthResponse, NetworkStatus};
+use models::{
+    HealthResponse,
+    NetworkStatus,
+    VerificationReport,
+};
+
 use rnode::RNodeClient;
+use verification::VerificationEngine;
 
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -33,6 +41,16 @@ async fn network_status(
     Json(state.rnode.status().await)
 }
 
+async fn verify_network(
+    State(state): State<AppState>,
+) -> Json<VerificationReport> {
+    let network_status = state.rnode.status().await;
+
+    let report = VerificationEngine::verify_network(&network_status);
+
+    Json(report)
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -50,6 +68,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/network/status", get(network_status))
+        .route("/api/verify", get(verify_network))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
