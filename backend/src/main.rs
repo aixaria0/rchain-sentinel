@@ -1,84 +1,116 @@
-mod models;
-mod rnode;
-mod verifier;
-mod verification;
-
-use axum::{
-    extract::State,
-    routing::get,
-    Json,
-    Router,
-};
-
-use models::{
-    HealthResponse,
+use crate::models::{
     NetworkStatus,
-    VerificationReport,
+    RNodeStatusPayload,
 };
-
-use rnode::RNodeClient;
-use verification::VerificationEngine;
-
-use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use reqwest::Client;
+use serde_json::Value;
 
 #[derive(Clone)]
-struct AppState {
-    rnode: Arc<RNodeClient>,
+pub struct RNodeClient {
+    client: Client,
+    base_url: String,
 }
 
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        service: "rchain-sentinel",
-        version: "0.1.0",
-    })
-}
+impl RNodeClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+        }
+    }
 
-async fn network_status(
-    State(state): State<AppState>,
-) -> Json<NetworkStatus> {
-    Json(state.rnode.status().await)
-}
+    pub async fn status(&self) -> NetworkStatus {
+        let start = std::time::Instant::now();
+        let url = format!("{}/api/status", self.base_url);
 
-async fn verify_network(
-    State(state): State<AppState>,
-) -> Json<VerificationReport> {
-    let network_status = state.rnode.status().await;
+        match self.client.get(&url).send().await {
+            Ok(response) => {
+                let http_status = response.status().as_u16();
+                let latency_ms = start.elapsed().as_millis();
 
-    let report = VerificationEngine::verify_network(&network_status);
+                if !response.status().is_success() {
+                    return NetworkStatus {
+                        reachable: false,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode returned HTTP {}",
+                            http_status
+                        )),
+                        rnode: None,
+                    };
+                }
 
-    Json(report)
-}
+                match response.json::<RNodeStatusPayload>().await {
+                    Ok(payload) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: None,
+                        rnode: Some(payload),
+                    },
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
+                    Err(error) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode response parsing failed: {}",
+                            error
+                        )),
+                        rnode: None,
+                    },
+                }
+            }
 
-    let rnode_url = std::env::var("RCHAIN_RNODE_URL")
-        .unwrap_or_else(|_| "http://localhost:40403".to_string());
+            Err(error) => NetworkStatus {
+                reachable: false,
+                node_url: self.base_url.clone(),
+                latency_ms: None,
+                http_status: None,
+                probe: url,
+                error: Some(error.to_string()),
+                rnode: None,
+            },
+        }
+    }
 
-    println!("RChain Sentinel");
-    println!("RNode target: {}", rnode_url);
+    pub async fn last_finalized_block(&self) -> Result<Value, String> {
+        let url = format!(
+            "{}/api/last-finalized-block?view=summary",
+            self.base_url
+        );
 
-    let state = AppState {
-        rnode: Arc::new(RNodeClient::new(rnode_url)),
-    };
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .route("/api/network/status", get(network_status))
-        .route("/api/verify", get(verify_network))
-        .with_state(state)
-        .layer(CorsLayer::permissive());
+        let status = response.status();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
-        .await
-        .expect("failed to bind server");
+        if !status.is_success() {
+            return Err(format!(
+                "LFB endpoint returned HTTP {}",
+                status.as_u16()
+            ));
+        }
 
-    println!("Listening on http://0.0.0.0:8080");
-
-    axum::serve(listener, app)
-        .await
-        .expect("server failed");
+        response
+            .json::<Value>()
+            .await
+            .map_err(|error| {
+                format!(
+                    "LFB response parsing failed: {}",
+                    error
+                )
+            })
+    }
 }
