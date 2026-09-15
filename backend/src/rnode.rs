@@ -26,9 +26,7 @@ impl RNodeClient {
         }
     }
 
-    pub async fn fetch_last_finalized_block(&self) -> Result<Value, String> {
-        self.get_json("/api/last-finalized-block").await
-    }
+    pub async fn fetch_last_finalized_block(&self) -> Result<Value, String> { self.get_json("/api/last-finalized-block").await }
 
     pub async fn fetch_block(&self, hash: &str) -> Result<Value, String> {
         let encoded = urlencoding::encode(hash);
@@ -69,12 +67,45 @@ impl RNodeClient {
             let full_block_hash = full_block.as_ref().and_then(|block| Self::find_string(block, &["blockHash", "block_hash", "hash", "id"]));
             let node_reported_finalized = finality_result.as_ref().ok().copied();
             let finality_hash_match = match (&full_block_hash, evidence.block_hash.as_ref()) { (Some(full), Some(observed)) => Some(full == observed), _ => None };
+            let (canonical_consistency, canonical_mismatches) = match (&evidence.raw, &full_block) {
+                (Some(observed), Some(canonical)) => Self::compare_protocol_fields(observed, canonical),
+                _ => (None, Vec::new()),
+            };
             let errors = [full_block_result.err(), finality_result.err()].into_iter().flatten().collect::<Vec<_>>();
-            evidence = evidence.with_protocol_evidence(full_block, full_block_hash, node_reported_finalized, finality_hash_match, if errors.is_empty() { None } else { Some(errors.join("; ")) });
+            evidence = evidence.with_protocol_evidence(full_block, full_block_hash, node_reported_finalized, finality_hash_match, canonical_consistency, canonical_mismatches, if errors.is_empty() { None } else { Some(errors.join("; ")) });
         } else {
-            evidence = evidence.with_protocol_evidence(None, None, None, None, Some("Cannot query /block/{hash} or /is-finalized/{hash}: finalized block hash is missing.".to_string()));
+            evidence = evidence.with_protocol_evidence(None, None, None, None, None, Vec::new(), Some("Cannot query /block/{hash} or /is-finalized/{hash}: finalized block hash is missing.".to_string()));
         }
         Ok(evidence)
+    }
+
+    fn compare_protocol_fields(observed: &Value, canonical: &Value) -> (Option<bool>, Vec<String>) {
+        let observed = match Self::find_protocol_object(observed) { Some(value) => value, None => return (None, vec!["observed protocol BlockInfo shape not found".to_string()]) };
+        let canonical = match Self::find_protocol_object(canonical) { Some(value) => value, None => return (Some(false), vec!["canonical protocol BlockInfo shape not found".to_string()]) };
+        let fields = ["blockHash", "blockNumber", "sender", "seqNum", "preStateHash", "postStateHash", "justifications", "bonds", "sigAlgorithm", "sig"];
+        let mut mismatches = Vec::new();
+        for field in fields {
+            match (observed.get(field), canonical.get(field)) {
+                (Some(left), Some(right)) if left == right => {}
+                (Some(_), Some(_)) => mismatches.push(format!("{} differs", field)),
+                (None, Some(_)) => mismatches.push(format!("{} missing from observed payload", field)),
+                (Some(_), None) => mismatches.push(format!("{} missing from canonical payload", field)),
+                (None, None) => mismatches.push(format!("{} missing from both payloads", field)),
+            }
+        }
+        (Some(mismatches.is_empty()), mismatches)
+    }
+
+    fn find_protocol_object(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+        match value {
+            Value::Object(map) => {
+                let shaped = map.contains_key("blockHash") && map.contains_key("blockNumber") && (map.contains_key("bonds") || map.contains_key("justifications"));
+                if shaped { return Some(map); }
+                map.values().find_map(Self::find_protocol_object)
+            }
+            Value::Array(items) => items.iter().find_map(Self::find_protocol_object),
+            _ => None,
+        }
     }
 
     fn parse_finalized_bool(value: &Value) -> Option<bool> {
