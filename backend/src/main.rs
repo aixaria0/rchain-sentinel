@@ -10,6 +10,7 @@ use axum::{
 };
 
 use models::{
+    FinalizedBlockEvidence,
     HealthResponse,
     NetworkStatus,
     VerificationReport,
@@ -45,8 +46,15 @@ async fn verify_network(
 ) -> Json<VerificationReport> {
     let network_status = state.rnode.status().await;
 
-    let report =
-        VerificationEngine::verify_network(&network_status);
+    let finalized_block = match state.rnode.fetch_last_finalized_block().await {
+        Ok(raw) => FinalizedBlockEvidence::available(raw),
+        Err(error) => FinalizedBlockEvidence::unavailable(error),
+    };
+
+    let report = VerificationEngine::verify_network(
+        &network_status,
+        &finalized_block,
+    );
 
     Json(report)
 }
