@@ -1,4 +1,5 @@
 mod block_verification;
+mod cross_node;
 mod models;
 mod rnode;
 mod verification;
@@ -6,7 +7,8 @@ mod verification;
 use axum::{extract::State, routing::get, Json, Router};
 
 use block_verification::BlockVerificationEngine;
-use models::{FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
+use cross_node::CrossNodeVerificationEngine;
+use models::{CrossNodeReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
 
@@ -16,6 +18,7 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 struct AppState {
     rnode: Arc<RNodeClient>,
+    rnode_urls: Arc<Vec<String>>,
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -63,6 +66,10 @@ async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport>
     Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url))
 }
 
+async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> {
+    Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await)
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -70,11 +77,26 @@ async fn main() {
     let rnode_url = std::env::var("RCHAIN_RNODE_URL")
         .unwrap_or_else(|_| "http://localhost:40403".to_string());
 
+    let rnode_urls = std::env::var("RCHAIN_RNODE_URLS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|url| !url.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|urls| !urls.is_empty())
+        .unwrap_or_else(|| vec![rnode_url.clone()]);
+
     println!("RChain Sentinel");
     println!("RNode target: {}", rnode_url);
+    println!("Cross-node targets: {}", rnode_urls.len());
 
     let state = AppState {
         rnode: Arc::new(RNodeClient::new(rnode_url)),
+        rnode_urls: Arc::new(rnode_urls),
     };
 
     let app = Router::new()
@@ -83,6 +105,7 @@ async fn main() {
         .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network))
         .route("/api/verify/block", get(verify_block))
+        .route("/api/verify/cross-node", get(verify_cross_node))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
