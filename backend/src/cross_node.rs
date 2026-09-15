@@ -33,12 +33,14 @@ impl CrossNodeVerificationEngine {
 
         let mut candidates: Vec<(u64, Option<String>, usize)> = Vec::new();
         for item in &observations {
-            if let Some(height) = item.finalized_height {
-                let key = (height, item.block_hash.clone());
-                if let Some(existing) = candidates.iter_mut().find(|candidate| candidate.0 == key.0 && candidate.1 == key.1) {
-                    existing.2 += 1;
-                } else {
-                    candidates.push((key.0, key.1, 1));
+            if item.reachable {
+                if let Some(height) = item.finalized_height {
+                    let key = (height, item.block_hash.clone());
+                    if let Some(existing) = candidates.iter_mut().find(|candidate| candidate.0 == key.0 && candidate.1 == key.1) {
+                        existing.2 += 1;
+                    } else {
+                        candidates.push((key.0, key.1, 1));
+                    }
                 }
             }
         }
@@ -49,38 +51,24 @@ impl CrossNodeVerificationEngine {
             .map(|(height, hash, count)| (Some(*height), hash.clone(), *count))
             .unwrap_or((None, None, 0));
 
-        let height_values: Vec<u64> = observations.iter().filter_map(|item| item.finalized_height).collect();
+        let quorum_required = if reachable_count == 0 { 0 } else { (2 * reachable_count + 2) / 3 };
+        let agreement_ratio = if reachable_count == 0 { 0.0 } else { agreeing_nodes as f64 / reachable_count as f64 };
+        let quorum_observed = quorum_required > 0 && agreeing_nodes >= quorum_required && common_block_hash.is_some();
+
+        let height_values: Vec<u64> = observations.iter().filter(|item| item.reachable).filter_map(|item| item.finalized_height).collect();
         let height_agreement = !height_values.is_empty() && height_values.iter().all(|height| Some(*height) == common_finalized_height);
 
-        let hash_values: Vec<&String> = observations
-            .iter()
-            .filter_map(|item| item.block_hash.as_ref())
-            .collect();
-        let hash_agreement = common_block_hash.is_some()
-            && !hash_values.is_empty()
-            && hash_values.iter().all(|hash| Some((*hash).clone()) == common_block_hash);
+        let hash_values: Vec<&String> = observations.iter().filter(|item| item.reachable).filter_map(|item| item.block_hash.as_ref()).collect();
+        let hash_agreement = common_block_hash.is_some() && !hash_values.is_empty() && hash_values.iter().all(|hash| Some((*hash).clone()) == common_block_hash);
+        let agreement = quorum_observed && height_agreement && hash_agreement;
 
-        let agreement = height_agreement && hash_agreement;
-        let status = if observations.is_empty() {
-            "warn"
-        } else if agreement && reachable_count == observations.len() {
-            "pass"
-        } else {
-            "warn"
-        };
+        let status = if observations.is_empty() { "warn" } else if agreement { "pass" } else { "warn" };
 
         CrossNodeReport {
-            target_count: observations.len(),
-            reachable_count,
-            evidence_count,
-            agreeing_nodes,
-            common_finalized_height,
-            common_block_hash,
-            height_agreement,
-            hash_agreement,
-            agreement,
-            status: status.to_string(),
-            observations,
+            target_count: observations.len(), reachable_count, evidence_count, agreeing_nodes,
+            quorum_required, quorum_observed, agreement_ratio,
+            common_finalized_height, common_block_hash, height_agreement, hash_agreement,
+            agreement, status: status.to_string(), observations,
         }
     }
 }
