@@ -21,7 +21,9 @@ RChain Sentinel is an independent verification service and black-chain verificat
 
 Sentinel collects RNode state and finalized-block evidence, preserves the observed payload, cross-checks multiple nodes, inventories Casper protocol evidence, and produces explicit machine-readable verification results.
 
-The explorer now exposes a unified block-centric evidence view designed for integration with an RChain block-explorer workflow: **Why this block?** The answer is assembled from node state, observed block identity, validator/bond evidence, justifications, cross-node observations, and explicit verification limitations.
+The explorer exposes a unified block-centric evidence view designed for integration with an RChain block-explorer workflow: **Why this block?** The answer is assembled from node state, observed block identity, validator/bond evidence, justifications, cross-node observations, and explicit verification limitations.
+
+When no RNode is connected, the browser console automatically switches to a clearly labeled **DEMO DATA / SHOWCASE** view so a public deployment can demonstrate the verification surface without pretending synthetic evidence is live chain data.
 
 The system is intentionally conservative: node-count agreement is never presented as stake-weighted Casper finality. Protocol-shaped evidence is reported separately until the exact response schema and validator/stake semantics are pinned to the target RNode implementation.
 
@@ -61,6 +63,7 @@ Node checks   Block checks
 Sentinel currently provides:
 
 - A browser-based black-chain verification console at `/` with live refresh.
+- A polished offline showcase mode using explicitly labeled synthetic demo data when no RNode is reachable.
 - A unified `/api/explorer/block` endpoint that assembles network, block, Casper, cross-node, verification and explanation evidence for the current finalized block.
 - A human-readable **Why this block?** evidence trail in the explorer.
 - RNode reachability, HTTP status, latency, readiness, validator/read-only state, peers, epoch, network and shard identity.
@@ -111,7 +114,15 @@ RCHAIN_RNODE_URL=http://node-a:40403,http://node-b:40403,http://node-c:40403
 
 `RCHAIN_RNODE_URLS` controls the cross-node verification targets. If it is not set, Sentinel falls back to the single `RCHAIN_RNODE_URL` target.
 
-The Sentinel HTTP service listens on `0.0.0.0:8080`.
+The Sentinel HTTP service listens on `PORT` when provided by the deployment platform, otherwise it defaults to `8080`.
+
+## Public deployment
+
+The repository includes a production-oriented `Dockerfile` and `render.yaml` for a public container deployment. Connect this repository to a container-capable host such as Render and deploy the service using the included manifest.
+
+A deployment with no RNode configured is still useful as a showcase: `/` presents the Sentinel interface in clearly labeled **DEMO DATA / SHOWCASE** mode. Configure `RCHAIN_RNODE_URL` or `RCHAIN_RNODE_URLS` later to switch automatically to live evidence whenever the configured RNode(s) are reachable.
+
+The GitHub repository itself stores the application and deployment configuration; it does not by itself execute the Rust service or create a public runtime URL.
 
 ## Explorer integration direction
 
@@ -166,7 +177,7 @@ backend/
 
 `/api/explorer/block` composes these independent results into one block-centric verification object and generates an explicit evidence explanation.
 
-`console.html` provides the black-chain verification surface over the same machine-readable evidence APIs.
+`console.html` provides the black-chain verification surface over the same machine-readable evidence APIs and includes an explicit offline showcase fallback.
 
 ## Running locally
 
@@ -221,6 +232,9 @@ The long-term objective is a verification layer that can answer not only what st
 - Browser verification console
 - Unified block-centric explorer evidence endpoint
 - Human-readable block explanation view
+- Explicit offline showcase mode
+- Container deployment configuration
+- Deployment-platform manifest
 - CI-backed Rust tests
 
 ### Next
