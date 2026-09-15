@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: rchain-sentinel
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: RCHAIN_RNODE_URL
+        sync: false
+      - key: RCHAIN_RNODE_URLS
+        sync: false
