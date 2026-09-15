@@ -49,15 +49,17 @@ pub struct FinalizedBlockEvidence {
     pub full_block_hash: Option<String>,
     pub node_reported_finalized: Option<bool>,
     pub finality_hash_match: Option<bool>,
+    pub canonical_consistency: Option<bool>,
+    pub canonical_mismatches: Vec<String>,
     pub finality_error: Option<String>,
     pub error: Option<String>,
 }
 impl FinalizedBlockEvidence {
-    pub fn unavailable(error: impl Into<String>) -> Self { Self { available: false, raw: None, payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, full_block_available: false, full_block: None, full_block_hash: None, node_reported_finalized: None, finality_hash_match: None, finality_error: None, error: Some(error.into()) } }
-    pub fn available(raw: Value) -> Self { Self { available: true, raw: Some(raw), payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, full_block_available: false, full_block: None, full_block_hash: None, node_reported_finalized: None, finality_hash_match: None, finality_error: None, error: None } }
+    pub fn unavailable(error: impl Into<String>) -> Self { Self { available: false, raw: None, payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, full_block_available: false, full_block: None, full_block_hash: None, node_reported_finalized: None, finality_hash_match: None, canonical_consistency: None, canonical_mismatches: Vec::new(), finality_error: None, error: Some(error.into()) } }
+    pub fn available(raw: Value) -> Self { Self { available: true, raw: Some(raw), payload_sha256: None, block_hash: None, parent_hash: None, proposer: None, signature: None, justification_present: false, full_block_available: false, full_block: None, full_block_hash: None, node_reported_finalized: None, finality_hash_match: None, canonical_consistency: None, canonical_mismatches: Vec::new(), finality_error: None, error: None } }
     pub fn with_sha256(mut self, digest: String) -> Self { self.payload_sha256 = Some(digest); self }
     pub fn with_block_fields(mut self, block_hash: Option<String>, parent_hash: Option<String>, proposer: Option<String>, signature: Option<String>, justification_present: bool) -> Self { self.block_hash = block_hash; self.parent_hash = parent_hash; self.proposer = proposer; self.signature = signature; self.justification_present = justification_present; self }
-    pub fn with_protocol_evidence(mut self, full_block: Option<Value>, full_block_hash: Option<String>, node_reported_finalized: Option<bool>, finality_hash_match: Option<bool>, finality_error: Option<String>) -> Self { self.full_block_available = full_block.is_some(); self.full_block = full_block; self.full_block_hash = full_block_hash; self.node_reported_finalized = node_reported_finalized; self.finality_hash_match = finality_hash_match; self.finality_error = finality_error; self }
+    pub fn with_protocol_evidence(mut self, full_block: Option<Value>, full_block_hash: Option<String>, node_reported_finalized: Option<bool>, finality_hash_match: Option<bool>, canonical_consistency: Option<bool>, canonical_mismatches: Vec<String>, finality_error: Option<String>) -> Self { self.full_block_available = full_block.is_some(); self.full_block = full_block; self.full_block_hash = full_block_hash; self.node_reported_finalized = node_reported_finalized; self.finality_hash_match = finality_hash_match; self.canonical_consistency = canonical_consistency; self.canonical_mismatches = canonical_mismatches; self.finality_error = finality_error; self }
 }
 
 #[derive(Debug, Clone, Serialize)]
