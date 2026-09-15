@@ -54,12 +54,13 @@ async fn verify_network(State(state): State<AppState>) -> Json<VerificationRepor
 }
 
 async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> {
+    let network_status = state.rnode.status().await;
     let evidence = match state.rnode.fetch_last_finalized_block_evidence().await {
         Ok(evidence) => evidence,
         Err(error) => FinalizedBlockEvidence::unavailable(error),
     };
 
-    Json(BlockVerificationEngine::verify(&evidence, &state.rnode.target_url()))
+    Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url))
 }
 
 #[tokio::main]
