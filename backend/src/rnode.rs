@@ -1,4 +1,4 @@
-use crate::models::NetworkStatus;
+use crate::models::{NetworkStatus, RNodeStatusPayload};
 use reqwest::Client;
 
 #[derive(Clone)]
@@ -24,16 +24,43 @@ impl RNodeClient {
                 let http_status = response.status().as_u16();
                 let latency_ms = start.elapsed().as_millis();
 
-                NetworkStatus {
-                    reachable: response.status().is_success(),
-                    node_url: self.base_url.clone(),
-                    latency_ms: Some(latency_ms),
-                    http_status: Some(http_status),
-                    probe: url,
-                    error: if response.status().is_success() {
-                        None
-                    } else {
-                        Some(format!("RNode returned HTTP {}", http_status))
+                if !response.status().is_success() {
+                    return NetworkStatus {
+                        reachable: false,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode returned HTTP {}",
+                            http_status
+                        )),
+                        rnode: None,
+                    };
+                }
+
+                match response.json::<RNodeStatusPayload>().await {
+                    Ok(payload) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: None,
+                        rnode: Some(payload),
+                    },
+
+                    Err(error) => NetworkStatus {
+                        reachable: true,
+                        node_url: self.base_url.clone(),
+                        latency_ms: Some(latency_ms),
+                        http_status: Some(http_status),
+                        probe: url,
+                        error: Some(format!(
+                            "RNode response parsing failed: {}",
+                            error
+                        )),
+                        rnode: None,
                     },
                 }
             }
@@ -45,6 +72,7 @@ impl RNodeClient {
                 http_status: None,
                 probe: url,
                 error: Some(error.to_string()),
+                rnode: None,
             },
         }
     }
