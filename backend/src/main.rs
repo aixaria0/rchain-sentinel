@@ -4,6 +4,7 @@ mod block_verification;
 mod casper_evidence;
 mod counterfactual;
 mod cross_node;
+mod demo;
 mod invariants;
 mod models;
 mod provenance;
@@ -18,6 +19,7 @@ use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
 use counterfactual::{counterfactual_execution, CounterfactualReport};
 use cross_node::CrossNodeVerificationEngine;
+use demo::{killer_demo, KillerDemo};
 use invariants::{invariant_trace, InvariantTrace};
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
 use provenance::{diff_events, proof_carrying_execution, qlf_certificate_linkage, replay_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, QlfCertificateLinkage, RealityDiff, ReplayReport};
@@ -48,6 +50,7 @@ async fn reality_challenge(Path((event_id, attack)): Path<(String, String)>) -> 
 async fn reality_qlf(Path(event_id): Path<String>) -> Json<QlfCertificateLinkage> { Json(qlf_certificate_linkage(&event_id)) }
 async fn reality_adapters() -> Json<AdapterRegistry> { Json(adapter_registry()) }
 async fn reality_invariants(Path(event_id): Path<String>) -> Json<InvariantTrace> { Json(invariant_trace(&event_id)) }
+async fn reality_demo(Path(event_id): Path<String>) -> Json<KillerDemo> { Json(killer_demo(&event_id)) }
 async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.fetch_block(&hash).await.map(Json).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 async fn is_finalized(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.is_finalized(&hash).await.map(|value| Json(serde_json::json!({"finalized": value}))).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 
@@ -82,7 +85,7 @@ async fn main() {
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
         .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
-        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge)).route("/api/reality/qlf/{event_id}", get(reality_qlf)).route("/api/reality/adapters", get(reality_adapters)).route("/api/reality/invariants/{event_id}", get(reality_invariants))
+        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge)).route("/api/reality/qlf/{event_id}", get(reality_qlf)).route("/api/reality/adapters", get(reality_adapters)).route("/api/reality/invariants/{event_id}", get(reality_invariants)).route("/api/reality/demo/{event_id}", get(reality_demo))
         .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
         .with_state(state).layer(CorsLayer::permissive());
     let bind_address = format!("0.0.0.0:{}", port);
