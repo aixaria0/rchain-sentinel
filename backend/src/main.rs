@@ -23,6 +23,7 @@ use tower_http::cors::CorsLayer;
 struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>> }
 
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
+async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
 async fn network_status(State(state): State<AppState>) -> Json<NetworkStatus> { Json(state.rnode.status().await) }
 
@@ -94,6 +95,7 @@ async fn main() {
     let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls) };
     let app = Router::new()
         .route("/", get(explorer))
+        .route("/reality", get(reality_explorer))
         .route("/health", get(health))
         .route("/api/network/status", get(network_status))
         .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
