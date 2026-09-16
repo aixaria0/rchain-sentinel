@@ -2,6 +2,7 @@ mod block_verification;
 mod casper_evidence;
 mod cross_node;
 mod models;
+mod provenance;
 mod rnode;
 mod verification;
 
@@ -11,6 +12,7 @@ use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
 use cross_node::CrossNodeVerificationEngine;
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
+use provenance::{synthetic_event, EvidenceEnvelope};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
 
@@ -47,6 +49,10 @@ async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceRepo
 
 async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> {
     Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await)
+}
+
+async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> {
+    Json(synthetic_event(&event_id))
 }
 
 async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
@@ -95,6 +101,7 @@ async fn main() {
         .route("/api/verify/block", get(verify_block))
         .route("/api/verify/casper", get(verify_casper))
         .route("/api/verify/cross-node", get(verify_cross_node))
+        .route("/api/reality/event/{event_id}", get(reality_event))
         .route("/api/explorer/block", get(explorer_block))
         .route("/api/block/{hash}", get(get_block))
         .route("/api/is-finalized/{hash}", get(is_finalized))
