@@ -16,7 +16,7 @@ use casper_evidence::CasperEvidenceEngine;
 use counterfactual::{counterfactual_execution, CounterfactualReport};
 use cross_node::CrossNodeVerificationEngine;
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
-use provenance::{diff_events, proof_carrying_execution, replay_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, RealityDiff, ReplayReport};
+use provenance::{diff_events, proof_carrying_execution, qlf_certificate_linkage, replay_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, QlfCertificateLinkage, RealityDiff, ReplayReport};
 use rnode::RNodeClient;
 use semantic_diff::{semantic_diff, SemanticRealityDiff};
 use verification::VerificationEngine;
@@ -25,7 +25,6 @@ use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>> }
-
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
@@ -42,6 +41,7 @@ async fn reality_proof(Path(event_id): Path<String>) -> Json<ProofCarryingExecut
 async fn reality_replay(Path(event_id): Path<String>) -> Json<ReplayReport> { Json(replay_execution(&event_id)) }
 async fn reality_counterfactual(Path((event_id, scenario)): Path<(String, String)>) -> Json<CounterfactualReport> { Json(counterfactual_execution(&event_id, &scenario)) }
 async fn reality_challenge(Path((event_id, attack)): Path<(String, String)>) -> Json<AdversarialChallenge> { Json(challenge_event(&event_id, &attack)) }
+async fn reality_qlf(Path(event_id): Path<String>) -> Json<QlfCertificateLinkage> { Json(qlf_certificate_linkage(&event_id)) }
 async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.fetch_block(&hash).await.map(Json).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 async fn is_finalized(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.is_finalized(&hash).await.map(|value| Json(serde_json::json!({"finalized": value}))).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 
@@ -76,7 +76,7 @@ async fn main() {
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
         .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
-        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge))
+        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge)).route("/api/reality/qlf/{event_id}", get(reality_qlf))
         .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
         .with_state(state).layer(CorsLayer::permissive());
     let bind_address = format!("0.0.0.0:{}", port);
