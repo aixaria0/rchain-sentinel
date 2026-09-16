@@ -24,6 +24,21 @@ pub struct ProofCarryingExecution {
     pub claim_boundary: String,
 }
 #[derive(Debug, Clone, Serialize)]
+pub struct ReplayReport {
+    pub event_id: String,
+    pub replay_id: String,
+    pub expected_trace_hash: String,
+    pub observed_trace_hash: String,
+    pub expected_state_hash: String,
+    pub observed_state_hash: String,
+    pub match: bool,
+    pub first_mismatch_step: Option<usize>,
+    pub mismatch_reason: Option<String>,
+    pub replay_steps: Vec<String>,
+    pub synthetic: bool,
+    pub claim_boundary: String,
+}
+#[derive(Debug, Clone, Serialize)]
 pub struct RealityDiff { pub left_event_id: String, pub right_event_id: String, pub common_prefix: usize, pub divergence_index: Option<usize>, pub divergence_stage: Option<String>, pub divergence_reason: Option<String>, pub left_hash: Option<String>, pub right_hash: Option<String>, pub left: EvidenceEnvelope, pub right: EvidenceEnvelope, pub synthetic: bool }
 
 fn hash(label: &str, parent: Option<&str>) -> String { let mut hasher = Sha256::new(); hasher.update(label.as_bytes()); if let Some(parent) = parent { hasher.update(parent.as_bytes()); } format!("{:x}", hasher.finalize()) }
@@ -59,29 +74,41 @@ pub fn proof_carrying_execution(event_id: &str) -> ProofCarryingExecution {
     let links = &envelope.links;
     let integrity_chain = links.iter().map(|link| link.content_hash.clone()).collect::<Vec<_>>();
     ProofCarryingExecution {
-        event_id: event_id.into(),
-        envelope_hash: envelope.root_hash.clone(),
-        parent_event: None,
-        actor_capability: "cap:quantumos:exchange-demo".into(),
-        qlf_state: "zfa-balanced | phase=+-+- | spectral=c·I (certificate data)".into(),
-        rholang_source_hash: links[2].content_hash.clone(),
-        normalized_process: "for (recv <- left \u2190 right) { send(left, recv) }".into(),
-        execution_trace_hash: links[3].content_hash.clone(),
-        deploy_id: links[2].id.clone(),
-        block_hash: links[4].content_hash.clone(),
-        node_observations: vec![links[5].id.clone()],
-        verification_results: vec!["sovereign-lattice: quorum-check".into(), "provenance-chain: intact".into()],
-        integrity_chain,
-        synthetic: true,
+        event_id: event_id.into(), envelope_hash: envelope.root_hash.clone(), parent_event: None,
+        actor_capability: "cap:quantumos:exchange-demo".into(), qlf_state: "zfa-balanced | phase=+-+- | spectral=c·I (certificate data)".into(),
+        rholang_source_hash: links[2].content_hash.clone(), normalized_process: "for (recv <- left ← right) { send(left, recv) }".into(),
+        execution_trace_hash: links[3].content_hash.clone(), deploy_id: links[2].id.clone(), block_hash: links[4].content_hash.clone(),
+        node_observations: vec![links[5].id.clone()], verification_results: vec!["sovereign-lattice: quorum-check".into(), "provenance-chain: intact".into()],
+        integrity_chain, synthetic: true,
         claim_boundary: "Synthetic proof-carrying envelope; fields model independently checkable evidence references and do not claim live replay or RChain finality.".into(),
     }
 }
 
+pub fn replay_execution(event_id: &str) -> ReplayReport {
+    let envelope = synthetic_event(event_id);
+    let expected_trace_hash = envelope.links[3].content_hash.clone();
+    let expected_state_hash = hash("state:exchange-demo:conserved", Some(&expected_trace_hash));
+    let replay_id = format!("replay:{event_id}");
+    let replay_steps = vec![
+        "step 0: normalize Rholang exchange process".into(),
+        "step 1: resolve left/right channels".into(),
+        "step 2: reduce exchange and compute state hash".into(),
+    ];
+    let observed_trace_hash = hash("rspace:replay:0,1,2", Some(&envelope.links[2].content_hash));
+    let observed_state_hash = hash("state:exchange-demo:conserved", Some(&observed_trace_hash));
+    let matched = expected_trace_hash == observed_trace_hash && expected_state_hash == observed_state_hash;
+    ReplayReport {
+        event_id: event_id.into(), replay_id, expected_trace_hash, observed_trace_hash, expected_state_hash, observed_state_hash,
+        match: matched, first_mismatch_step: if matched { None } else { Some(2) },
+        mismatch_reason: if matched { None } else { Some("First mismatch at reduction/state derivation: replay trace hash differs from observed execution evidence.".into()) },
+        replay_steps, synthetic: true,
+        claim_boundary: "Synthetic deterministic replay model; it demonstrates comparison mechanics and does not claim execution of a live RSpace or RChain node.".into(),
+    }
+}
+
 pub fn diff_events(left_event_id: &str, right_event_id: &str) -> RealityDiff {
-    let mut left = synthetic_event_variant("shared-origin", false);
-    let mut right = synthetic_event_variant("shared-origin", true);
-    left.event_id = left_event_id.into(); left.links[0].id = left_event_id.into();
-    right.event_id = right_event_id.into(); right.links[0].id = right_event_id.into();
+    let mut left = synthetic_event_variant("shared-origin", false); let mut right = synthetic_event_variant("shared-origin", true);
+    left.event_id = left_event_id.into(); left.links[0].id = left_event_id.into(); right.event_id = right_event_id.into(); right.links[0].id = right_event_id.into();
     let common_prefix = left.links.iter().zip(&right.links).take_while(|(a, b)| a.content_hash == b.content_hash).count();
     let divergence_index = (common_prefix < left.links.len() && common_prefix < right.links.len()).then_some(common_prefix);
     let (divergence_stage, divergence_reason, left_hash, right_hash) = match divergence_index { Some(index) => { let stage = stage_label(&left.links[index].kind).to_string(); let reason = format!("First content-hash divergence at {}: the two synthetic executions carry different downstream evidence.", stage); (Some(stage), Some(reason), Some(left.links[index].content_hash.clone()), Some(right.links[index].content_hash.clone())) }, None => (None, None, None, None) };
