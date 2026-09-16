@@ -2,51 +2,14 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize)]
-pub struct EvidenceLink {
-    pub kind: String,
-    pub id: String,
-    pub parent_id: Option<String>,
-    pub content_hash: String,
-    pub source: String,
-    pub synthetic: bool,
-    pub claim: String,
-}
-
+pub struct EvidenceLink { pub kind: String, pub id: String, pub parent_id: Option<String>, pub content_hash: String, pub source: String, pub synthetic: bool, pub claim: String }
 #[derive(Debug, Clone, Serialize)]
-pub struct EvidenceEnvelope {
-    pub event_id: String,
-    pub root_hash: String,
-    pub synthetic: bool,
-    pub links: Vec<EvidenceLink>,
-    pub verification_basis: Vec<String>,
-}
-
+pub struct EvidenceEnvelope { pub event_id: String, pub root_hash: String, pub synthetic: bool, pub links: Vec<EvidenceLink>, pub verification_basis: Vec<String> }
 #[derive(Debug, Clone, Serialize)]
-pub struct RealityDiff {
-    pub left_event_id: String,
-    pub right_event_id: String,
-    pub common_prefix: usize,
-    pub divergence_index: Option<usize>,
-    pub divergence_stage: Option<String>,
-    pub divergence_reason: Option<String>,
-    pub left_hash: Option<String>,
-    pub right_hash: Option<String>,
-    pub left: EvidenceEnvelope,
-    pub right: EvidenceEnvelope,
-    pub synthetic: bool,
-}
+pub struct RealityDiff { pub left_event_id: String, pub right_event_id: String, pub common_prefix: usize, pub divergence_index: Option<usize>, pub divergence_stage: Option<String>, pub divergence_reason: Option<String>, pub left_hash: Option<String>, pub right_hash: Option<String>, pub left: EvidenceEnvelope, pub right: EvidenceEnvelope, pub synthetic: bool }
 
-fn hash(label: &str, parent: Option<&str>) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(label.as_bytes());
-    if let Some(parent) = parent { hasher.update(parent.as_bytes()); }
-    format!("{:x}", hasher.finalize())
-}
-
-fn stage_label(kind: &str) -> &'static str {
-    match kind { "event" => "Origin Event", "qlf" => "QLF / ZFA", "rholang" => "Rholang Process", "execution" => "ρ-Calculus Execution", "block" => "RChain Block", "observation" => "Sentinel Observation", "verification" => "Sovereign Lattice", _ => "Unknown Stage" }
-}
-
+fn hash(label: &str, parent: Option<&str>) -> String { let mut hasher = Sha256::new(); hasher.update(label.as_bytes()); if let Some(parent) = parent { hasher.update(parent.as_bytes()); } format!("{:x}", hasher.finalize()) }
+fn stage_label(kind: &str) -> &'static str { match kind { "event" => "Origin Event", "qlf" => "QLF / ZFA", "rholang" => "Rholang Process", "execution" => "ρ-Calculus Execution", "block" => "RChain Block", "observation" => "Sentinel Observation", "verification" => "Sovereign Lattice", _ => "Unknown Stage" } }
 pub fn synthetic_event(event_id: &str) -> EvidenceEnvelope { synthetic_event_variant(event_id, false) }
 
 pub fn synthetic_event_variant(event_id: &str, divergent: bool) -> EvidenceEnvelope {
@@ -61,7 +24,6 @@ pub fn synthetic_event_variant(event_id: &str, divergent: bool) -> EvidenceEnvel
     let block_hash = hash(block_label, Some(&trace_hash));
     let observation_hash = hash(observation_label, Some(&block_hash));
     let lattice_hash = hash(verification_label, Some(&observation_hash));
-
     let links = vec![
         EvidenceLink { kind: "event".into(), id: event_id.into(), parent_id: None, content_hash: event_hash.clone(), source: "QuantumOS event boundary".into(), synthetic: true, claim: "Interaction origin represented as an event certificate.".into() },
         EvidenceLink { kind: "qlf".into(), id: "qlf-7A91".into(), parent_id: Some(event_id.into()), content_hash: qlf_hash, source: "QLF event-level representation".into(), synthetic: true, claim: "ZFA-balanced phase representation is carried as logical evidence.".into() },
@@ -71,25 +33,16 @@ pub fn synthetic_event_variant(event_id: &str, divergent: bool) -> EvidenceEnvel
         EvidenceLink { kind: "observation".into(), id: if divergent { "node-b:18493" } else { "node-a:18492" }.into(), parent_id: Some(if divergent { "18493".into() } else { "18492".into() }), content_hash: observation_hash, source: "Sentinel observation boundary".into(), synthetic: true, claim: if divergent { "Synthetic alternate node observation exposes downstream divergence.".into() } else { "Node observation is evidence, not an independent finality proof.".into() } },
         EvidenceLink { kind: "verification".into(), id: if divergent { "lattice-check-divergence" } else { "lattice-check-7A91" }.into(), parent_id: Some(if divergent { "node-b:18493".into() } else { "node-a:18492".into() }), content_hash: lattice_hash.clone(), source: "Sovereign Lattice analysis boundary".into(), synthetic: true, claim: if divergent { "Synthetic diff marks the first downstream invariant divergence.".into() } else { "Certificate/quorum invariants can be evaluated independently.".into() } },
     ];
-    EvidenceEnvelope { event_id: event_id.into(), root_hash: lattice_hash, synthetic: true, links, verification_basis: vec![
-        "Synthetic deterministic fixture; no live QuantumOS, RChain or Sentinel integration is claimed.".into(),
-        "Each link preserves provenance through a cryptographic hash chain.".into(),
-        "Layer boundaries describe evidence claims rather than cross-layer proof of finality.".into(),
-    ] }
+    EvidenceEnvelope { event_id: event_id.into(), root_hash: lattice_hash, synthetic: true, links, verification_basis: vec!["Synthetic deterministic fixture; no live QuantumOS, RChain or Sentinel integration is claimed.".into(), "Each link preserves provenance through a cryptographic hash chain.".into(), "Layer boundaries describe evidence claims rather than cross-layer proof of finality.".into()] }
 }
 
 pub fn diff_events(left_event_id: &str, right_event_id: &str) -> RealityDiff {
-    let left = synthetic_event_variant(left_event_id, false);
-    let right = synthetic_event_variant(right_event_id, true);
+    let mut left = synthetic_event_variant("shared-origin", false);
+    let mut right = synthetic_event_variant("shared-origin", true);
+    left.event_id = left_event_id.into(); left.links[0].id = left_event_id.into();
+    right.event_id = right_event_id.into(); right.links[0].id = right_event_id.into();
     let common_prefix = left.links.iter().zip(&right.links).take_while(|(a, b)| a.content_hash == b.content_hash).count();
     let divergence_index = (common_prefix < left.links.len() && common_prefix < right.links.len()).then_some(common_prefix);
-    let (divergence_stage, divergence_reason, left_hash, right_hash) = match divergence_index {
-        Some(index) => {
-            let stage = stage_label(&left.links[index].kind).to_string();
-            let reason = format!("First content-hash divergence at {}: the two synthetic executions carry different downstream evidence.", stage);
-            (Some(stage), Some(reason), Some(left.links[index].content_hash.clone()), Some(right.links[index].content_hash.clone()))
-        }
-        None => (None, None, None, None),
-    };
+    let (divergence_stage, divergence_reason, left_hash, right_hash) = match divergence_index { Some(index) => { let stage = stage_label(&left.links[index].kind).to_string(); let reason = format!("First content-hash divergence at {}: the two synthetic executions carry different downstream evidence.", stage); (Some(stage), Some(reason), Some(left.links[index].content_hash.clone()), Some(right.links[index].content_hash.clone())) }, None => (None, None, None, None) };
     RealityDiff { left_event_id: left_event_id.into(), right_event_id: right_event_id.into(), common_prefix, divergence_index, divergence_stage, divergence_reason, left_hash, right_hash, left, right, synthetic: true }
 }
