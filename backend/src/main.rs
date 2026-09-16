@@ -7,15 +7,13 @@ mod rnode;
 mod verification;
 
 use axum::{extract::{Path, State}, response::Html, routing::get, Json, Router};
-
 use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
 use cross_node::CrossNodeVerificationEngine;
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
-use provenance::{synthetic_event, EvidenceEnvelope};
+use provenance::{diff_events, synthetic_event, EvidenceEnvelope, RealityDiff};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
-
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
@@ -26,43 +24,15 @@ async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
 async fn network_status(State(state): State<AppState>) -> Json<NetworkStatus> { Json(state.rnode.status().await) }
-
-async fn finalized_block_evidence(State(state): State<AppState>) -> Json<FinalizedBlockEvidence> {
-    Json(match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) })
-}
-
-async fn verify_network(State(state): State<AppState>) -> Json<VerificationReport> {
-    let network_status = state.rnode.status().await;
-    let finalized_block = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) };
-    Json(VerificationEngine::verify_network(&network_status, &finalized_block))
-}
-
-async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> {
-    let network_status = state.rnode.status().await;
-    let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) };
-    Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url))
-}
-
-async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceReport> {
-    let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) };
-    Json(CasperEvidenceEngine::analyze(&evidence))
-}
-
-async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> {
-    Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await)
-}
-
-async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> {
-    Json(synthetic_event(&event_id))
-}
-
-async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    state.rnode.fetch_block(&hash).await.map(Json).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error))
-}
-
-async fn is_finalized(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    state.rnode.is_finalized(&hash).await.map(|value| Json(serde_json::json!({"finalized": value}))).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error))
-}
+async fn finalized_block_evidence(State(state): State<AppState>) -> Json<FinalizedBlockEvidence> { Json(match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }) }
+async fn verify_network(State(state): State<AppState>) -> Json<VerificationReport> { let network_status = state.rnode.status().await; let finalized_block = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(VerificationEngine::verify_network(&network_status, &finalized_block)) }
+async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> { let network_status = state.rnode.status().await; let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url)) }
+async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceReport> { let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(CasperEvidenceEngine::analyze(&evidence)) }
+async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> { Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await) }
+async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> { Json(synthetic_event(&event_id)) }
+async fn reality_diff(Path((left, right)): Path<(String, String)>) -> Json<RealityDiff> { Json(diff_events(&left, &right)) }
+async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.fetch_block(&hash).await.map(Json).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
+async fn is_finalized(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.is_finalized(&hash).await.map(|value| Json(serde_json::json!({"finalized": value}))).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 
 async fn explorer_block(State(state): State<AppState>) -> Json<ExplorerBlockReport> {
     let network = state.rnode.status().await;
@@ -89,28 +59,16 @@ async fn main() {
     let rnode_url = std::env::var("RCHAIN_RNODE_URL").unwrap_or_else(|_| "http://localhost:40403".to_string());
     let rnode_urls = std::env::var("RCHAIN_RNODE_URLS").ok().map(|value| value.split(',').map(str::trim).filter(|url| !url.is_empty()).map(ToOwned::to_owned).collect::<Vec<_>>()).filter(|urls| !urls.is_empty()).unwrap_or_else(|| vec![rnode_url.clone()]);
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    println!("RChain Sentinel");
-    println!("RNode target: {}", rnode_url);
-    println!("Cross-node targets: {}", rnode_urls.len());
+    println!("RChain Sentinel"); println!("RNode target: {}", rnode_url); println!("Cross-node targets: {}", rnode_urls.len());
     let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls) };
     let app = Router::new()
-        .route("/", get(explorer))
-        .route("/reality", get(reality_explorer))
-        .route("/health", get(health))
-        .route("/api/network/status", get(network_status))
-        .route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
-        .route("/api/verify", get(verify_network))
-        .route("/api/verify/block", get(verify_block))
-        .route("/api/verify/casper", get(verify_casper))
-        .route("/api/verify/cross-node", get(verify_cross_node))
-        .route("/api/reality/event/{event_id}", get(reality_event))
-        .route("/api/explorer/block", get(explorer_block))
-        .route("/api/block/{hash}", get(get_block))
-        .route("/api/is-finalized/{hash}", get(is_finalized))
-        .with_state(state)
-        .layer(CorsLayer::permissive());
+        .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
+        .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
+        .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
+        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff))
+        .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
+        .with_state(state).layer(CorsLayer::permissive());
     let bind_address = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&bind_address).await.expect("failed to bind server");
-    println!("Listening on http://{}", bind_address);
-    axum::serve(listener, app).await.expect("server failed");
+    println!("Listening on http://{}", bind_address); axum::serve(listener, app).await.expect("server failed");
 }
