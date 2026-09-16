@@ -11,7 +11,7 @@ use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
 use cross_node::CrossNodeVerificationEngine;
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
-use provenance::{diff_events, proof_carrying_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, RealityDiff};
+use provenance::{diff_events, proof_carrying_execution, replay_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, RealityDiff, ReplayReport};
 use rnode::RNodeClient;
 use verification::VerificationEngine;
 use std::sync::Arc;
@@ -32,6 +32,7 @@ async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeRepor
 async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> { Json(synthetic_event(&event_id)) }
 async fn reality_diff(Path((left, right)): Path<(String, String)>) -> Json<RealityDiff> { Json(diff_events(&left, &right)) }
 async fn reality_proof(Path(event_id): Path<String>) -> Json<ProofCarryingExecution> { Json(proof_carrying_execution(&event_id)) }
+async fn reality_replay(Path(event_id): Path<String>) -> Json<ReplayReport> { Json(replay_execution(&event_id)) }
 async fn get_block(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.fetch_block(&hash).await.map(Json).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 async fn is_finalized(State(state): State<AppState>, Path(hash): Path<String>) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> { state.rnode.is_finalized(&hash).await.map(|value| Json(serde_json::json!({"finalized": value}))).map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error)) }
 
@@ -66,7 +67,7 @@ async fn main() {
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
         .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
-        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/proof/{event_id}", get(reality_proof))
+        .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay))
         .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
         .with_state(state).layer(CorsLayer::permissive());
     let bind_address = format!("0.0.0.0:{}", port);
