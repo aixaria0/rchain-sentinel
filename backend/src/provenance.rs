@@ -6,57 +6,22 @@ pub struct EvidenceLink { pub kind: String, pub id: String, pub parent_id: Optio
 #[derive(Debug, Clone, Serialize)]
 pub struct EvidenceEnvelope { pub event_id: String, pub root_hash: String, pub synthetic: bool, pub links: Vec<EvidenceLink>, pub verification_basis: Vec<String> }
 #[derive(Debug, Clone, Serialize)]
-pub struct ProofCarryingExecution {
-    pub event_id: String,
-    pub envelope_hash: String,
-    pub parent_event: Option<String>,
-    pub actor_capability: String,
-    pub qlf_state: String,
-    pub rholang_source_hash: String,
-    pub normalized_process: String,
-    pub execution_trace_hash: String,
-    pub deploy_id: String,
-    pub block_hash: String,
-    pub node_observations: Vec<String>,
-    pub verification_results: Vec<String>,
-    pub integrity_chain: Vec<String>,
-    pub synthetic: bool,
-    pub claim_boundary: String,
-}
+pub struct ProofCarryingExecution { pub event_id: String, pub envelope_hash: String, pub parent_event: Option<String>, pub actor_capability: String, pub qlf_state: String, pub rholang_source_hash: String, pub normalized_process: String, pub execution_trace_hash: String, pub deploy_id: String, pub block_hash: String, pub node_observations: Vec<String>, pub verification_results: Vec<String>, pub integrity_chain: Vec<String>, pub synthetic: bool, pub claim_boundary: String }
 #[derive(Debug, Clone, Serialize)]
-pub struct ReplayReport {
-    pub event_id: String,
-    pub replay_id: String,
-    pub expected_trace_hash: String,
-    pub observed_trace_hash: String,
-    pub expected_state_hash: String,
-    pub observed_state_hash: String,
-    pub match: bool,
-    pub first_mismatch_step: Option<usize>,
-    pub mismatch_reason: Option<String>,
-    pub replay_steps: Vec<String>,
-    pub synthetic: bool,
-    pub claim_boundary: String,
-}
+pub struct ReplayReport { pub event_id: String, pub replay_id: String, pub expected_trace_hash: String, pub observed_trace_hash: String, pub expected_state_hash: String, pub observed_state_hash: String, pub r#match: bool, pub first_mismatch_step: Option<usize>, pub mismatch_reason: Option<String>, pub replay_steps: Vec<String>, pub synthetic: bool, pub claim_boundary: String }
 #[derive(Debug, Clone, Serialize)]
 pub struct RealityDiff { pub left_event_id: String, pub right_event_id: String, pub common_prefix: usize, pub divergence_index: Option<usize>, pub divergence_stage: Option<String>, pub divergence_reason: Option<String>, pub left_hash: Option<String>, pub right_hash: Option<String>, pub left: EvidenceEnvelope, pub right: EvidenceEnvelope, pub synthetic: bool }
+#[derive(Debug, Clone, Serialize)]
+pub struct QlfCertificateLinkage { pub event_id: String, pub qlf_certificate_id: String, pub qlf_state: String, pub certificate_hash: String, pub parent_event_hash: String, pub linked_execution_hash: String, pub linkage_verified: bool, pub semantic_claims: Vec<String>, pub synthetic: bool, pub claim_boundary: String }
 
 fn hash(label: &str, parent: Option<&str>) -> String { let mut hasher = Sha256::new(); hasher.update(label.as_bytes()); if let Some(parent) = parent { hasher.update(parent.as_bytes()); } format!("{:x}", hasher.finalize()) }
 fn stage_label(kind: &str) -> &'static str { match kind { "event" => "Origin Event", "qlf" => "QLF / ZFA", "rholang" => "Rholang Process", "execution" => "ρ-Calculus Execution", "block" => "RChain Block", "observation" => "Sentinel Observation", "verification" => "Sovereign Lattice", _ => "Unknown Stage" } }
 pub fn synthetic_event(event_id: &str) -> EvidenceEnvelope { synthetic_event_variant(event_id, false) }
 
 pub fn synthetic_event_variant(event_id: &str, divergent: bool) -> EvidenceEnvelope {
-    let event_hash = hash(&format!("event:{event_id}"), None);
-    let qlf_hash = hash("qlf:zfa-balanced:phase:+-+-", Some(&event_hash));
-    let rholang_hash = hash("rholang:exchange-demo:v1", Some(&qlf_hash));
-    let trace_label = if divergent { "rspace:reduction:0,1,3" } else { "rspace:reduction:0,1,2" };
-    let block_label = if divergent { "rchain:block:synthetic-18493" } else { "rchain:block:synthetic-18492" };
-    let observation_label = if divergent { "sentinel:node-b-observation" } else { "sentinel:node-a-observation" };
-    let verification_label = if divergent { "sovereign-lattice:quorum-divergence" } else { "sovereign-lattice:quorum-check" };
-    let trace_hash = hash(trace_label, Some(&rholang_hash));
-    let block_hash = hash(block_label, Some(&trace_hash));
-    let observation_hash = hash(observation_label, Some(&block_hash));
-    let lattice_hash = hash(verification_label, Some(&observation_hash));
+    let event_hash = hash(&format!("event:{event_id}"), None); let qlf_hash = hash("qlf:zfa-balanced:phase:+-+-", Some(&event_hash)); let rholang_hash = hash("rholang:exchange-demo:v1", Some(&qlf_hash));
+    let trace_label = if divergent { "rspace:reduction:0,1,3" } else { "rspace:reduction:0,1,2" }; let block_label = if divergent { "rchain:block:synthetic-18493" } else { "rchain:block:synthetic-18492" }; let observation_label = if divergent { "sentinel:node-b-observation" } else { "sentinel:node-a-observation" }; let verification_label = if divergent { "sovereign-lattice:quorum-divergence" } else { "sovereign-lattice:quorum-check" };
+    let trace_hash = hash(trace_label, Some(&rholang_hash)); let block_hash = hash(block_label, Some(&trace_hash)); let observation_hash = hash(observation_label, Some(&block_hash)); let lattice_hash = hash(verification_label, Some(&observation_hash));
     let links = vec![
         EvidenceLink { kind: "event".into(), id: event_id.into(), parent_id: None, content_hash: event_hash.clone(), source: "QuantumOS event boundary".into(), synthetic: true, claim: "Interaction origin represented as an event certificate.".into() },
         EvidenceLink { kind: "qlf".into(), id: "qlf-7A91".into(), parent_id: Some(event_id.into()), content_hash: qlf_hash.clone(), source: "QLF event-level representation".into(), synthetic: true, claim: "ZFA-balanced phase representation is carried as logical evidence.".into() },
@@ -65,52 +30,15 @@ pub fn synthetic_event_variant(event_id: &str, divergent: bool) -> EvidenceEnvel
         EvidenceLink { kind: "block".into(), id: if divergent { "18493" } else { "18492" }.into(), parent_id: Some(if divergent { "trace-7A91-diverged".into() } else { "trace-7A91".into() }), content_hash: block_hash.clone(), source: "RChain block evidence boundary".into(), synthetic: true, claim: "Block provenance is linked to the execution trace.".into() },
         EvidenceLink { kind: "observation".into(), id: if divergent { "node-b:18493" } else { "node-a:18492" }.into(), parent_id: Some(if divergent { "18493".into() } else { "18492".into() }), content_hash: observation_hash.clone(), source: "Sentinel observation boundary".into(), synthetic: true, claim: if divergent { "Synthetic alternate node observation exposes downstream divergence.".into() } else { "Node observation is evidence, not an independent finality proof.".into() } },
         EvidenceLink { kind: "verification".into(), id: if divergent { "lattice-check-divergence" } else { "lattice-check-7A91" }.into(), parent_id: Some(if divergent { "node-b:18493".into() } else { "node-a:18492".into() }), content_hash: lattice_hash.clone(), source: "Sovereign Lattice analysis boundary".into(), synthetic: true, claim: if divergent { "Synthetic diff marks the first downstream invariant divergence.".into() } else { "Certificate/quorum invariants can be evaluated independently.".into() } },
-    ];
-    EvidenceEnvelope { event_id: event_id.into(), root_hash: lattice_hash, synthetic: true, links, verification_basis: vec!["Synthetic deterministic fixture; no live QuantumOS, RChain or Sentinel integration is claimed.".into(), "Each link preserves provenance through a cryptographic hash chain.".into(), "Layer boundaries describe evidence claims rather than cross-layer proof of finality.".into()] }
+    ]; EvidenceEnvelope { event_id: event_id.into(), root_hash: lattice_hash, synthetic: true, links, verification_basis: vec!["Synthetic deterministic fixture; no live QuantumOS, RChain or Sentinel integration is claimed.".into(), "Each link preserves provenance through a cryptographic hash chain.".into(), "Layer boundaries describe evidence claims rather than cross-layer proof of finality.".into()] }
 }
 
-pub fn proof_carrying_execution(event_id: &str) -> ProofCarryingExecution {
-    let envelope = synthetic_event(event_id);
-    let links = &envelope.links;
-    let integrity_chain = links.iter().map(|link| link.content_hash.clone()).collect::<Vec<_>>();
-    ProofCarryingExecution {
-        event_id: event_id.into(), envelope_hash: envelope.root_hash.clone(), parent_event: None,
-        actor_capability: "cap:quantumos:exchange-demo".into(), qlf_state: "zfa-balanced | phase=+-+- | spectral=c·I (certificate data)".into(),
-        rholang_source_hash: links[2].content_hash.clone(), normalized_process: "for (recv <- left ← right) { send(left, recv) }".into(),
-        execution_trace_hash: links[3].content_hash.clone(), deploy_id: links[2].id.clone(), block_hash: links[4].content_hash.clone(),
-        node_observations: vec![links[5].id.clone()], verification_results: vec!["sovereign-lattice: quorum-check".into(), "provenance-chain: intact".into()],
-        integrity_chain, synthetic: true,
-        claim_boundary: "Synthetic proof-carrying envelope; fields model independently checkable evidence references and do not claim live replay or RChain finality.".into(),
-    }
-}
+pub fn proof_carrying_execution(event_id: &str) -> ProofCarryingExecution { let envelope = synthetic_event(event_id); let links = &envelope.links; ProofCarryingExecution { event_id: event_id.into(), envelope_hash: envelope.root_hash.clone(), parent_event: None, actor_capability: "cap:quantumos:exchange-demo".into(), qlf_state: "zfa-balanced | phase=+-+- | spectral=c·I (certificate data)".into(), rholang_source_hash: links[2].content_hash.clone(), normalized_process: "for (recv <- left ← right) { send(left, recv) }".into(), execution_trace_hash: links[3].content_hash.clone(), deploy_id: links[2].id.clone(), block_hash: links[4].content_hash.clone(), node_observations: vec![links[5].id.clone()], verification_results: vec!["sovereign-lattice: quorum-check".into(), "provenance-chain: intact".into()], integrity_chain: links.iter().map(|l| l.content_hash.clone()).collect(), synthetic: true, claim_boundary: "Synthetic proof-carrying envelope; fields model independently checkable evidence references and do not claim live replay or RChain finality.".into() } }
+pub fn replay_execution(event_id: &str) -> ReplayReport { let envelope = synthetic_event(event_id); let expected_trace_hash = envelope.links[3].content_hash.clone(); let expected_state_hash = hash("state:exchange-demo:conserved", Some(&expected_trace_hash)); let observed_trace_hash = hash("rspace:replay:0,1,2", Some(&envelope.links[2].content_hash)); let observed_state_hash = hash("state:exchange-demo:conserved", Some(&observed_trace_hash)); let matched = expected_trace_hash == observed_trace_hash && expected_state_hash == observed_state_hash; ReplayReport { event_id: event_id.into(), replay_id: format!("replay:{event_id}"), expected_trace_hash, observed_trace_hash, expected_state_hash, observed_state_hash, r#match: matched, first_mismatch_step: if matched { None } else { Some(2) }, mismatch_reason: if matched { None } else { Some("First mismatch at reduction/state derivation.".into()) }, replay_steps: vec!["step 0: normalize Rholang exchange process".into(), "step 1: resolve left/right channels".into(), "step 2: reduce exchange and compute state hash".into()], synthetic: true, claim_boundary: "Synthetic deterministic replay model; it does not claim execution of a live RSpace or RChain node.".into() } }
+pub fn diff_events(left_event_id: &str, right_event_id: &str) -> RealityDiff { let mut left = synthetic_event_variant("shared-origin", false); let mut right = synthetic_event_variant("shared-origin", true); left.event_id = left_event_id.into(); left.links[0].id = left_event_id.into(); right.event_id = right_event_id.into(); right.links[0].id = right_event_id.into(); let common_prefix = left.links.iter().zip(&right.links).take_while(|(a, b)| a.content_hash == b.content_hash).count(); let divergence_index = (common_prefix < left.links.len() && common_prefix < right.links.len()).then_some(common_prefix); let (divergence_stage, divergence_reason, left_hash, right_hash) = match divergence_index { Some(index) => { let stage = stage_label(&left.links[index].kind).to_string(); (Some(stage.clone()), Some(format!("First content-hash divergence at {stage}: the two synthetic executions carry different downstream evidence.")), Some(left.links[index].content_hash.clone()), Some(right.links[index].content_hash.clone())) }, None => (None, None, None, None) }; RealityDiff { left_event_id: left_event_id.into(), right_event_id: right_event_id.into(), common_prefix, divergence_index, divergence_stage, divergence_reason, left_hash, right_hash, left, right, synthetic: true } }
 
-pub fn replay_execution(event_id: &str) -> ReplayReport {
-    let envelope = synthetic_event(event_id);
-    let expected_trace_hash = envelope.links[3].content_hash.clone();
-    let expected_state_hash = hash("state:exchange-demo:conserved", Some(&expected_trace_hash));
-    let replay_id = format!("replay:{event_id}");
-    let replay_steps = vec![
-        "step 0: normalize Rholang exchange process".into(),
-        "step 1: resolve left/right channels".into(),
-        "step 2: reduce exchange and compute state hash".into(),
-    ];
-    let observed_trace_hash = hash("rspace:replay:0,1,2", Some(&envelope.links[2].content_hash));
-    let observed_state_hash = hash("state:exchange-demo:conserved", Some(&observed_trace_hash));
-    let matched = expected_trace_hash == observed_trace_hash && expected_state_hash == observed_state_hash;
-    ReplayReport {
-        event_id: event_id.into(), replay_id, expected_trace_hash, observed_trace_hash, expected_state_hash, observed_state_hash,
-        match: matched, first_mismatch_step: if matched { None } else { Some(2) },
-        mismatch_reason: if matched { None } else { Some("First mismatch at reduction/state derivation: replay trace hash differs from observed execution evidence.".into()) },
-        replay_steps, synthetic: true,
-        claim_boundary: "Synthetic deterministic replay model; it demonstrates comparison mechanics and does not claim execution of a live RSpace or RChain node.".into(),
-    }
-}
-
-pub fn diff_events(left_event_id: &str, right_event_id: &str) -> RealityDiff {
-    let mut left = synthetic_event_variant("shared-origin", false); let mut right = synthetic_event_variant("shared-origin", true);
-    left.event_id = left_event_id.into(); left.links[0].id = left_event_id.into(); right.event_id = right_event_id.into(); right.links[0].id = right_event_id.into();
-    let common_prefix = left.links.iter().zip(&right.links).take_while(|(a, b)| a.content_hash == b.content_hash).count();
-    let divergence_index = (common_prefix < left.links.len() && common_prefix < right.links.len()).then_some(common_prefix);
-    let (divergence_stage, divergence_reason, left_hash, right_hash) = match divergence_index { Some(index) => { let stage = stage_label(&left.links[index].kind).to_string(); let reason = format!("First content-hash divergence at {}: the two synthetic executions carry different downstream evidence.", stage); (Some(stage), Some(reason), Some(left.links[index].content_hash.clone()), Some(right.links[index].content_hash.clone())) }, None => (None, None, None, None) };
-    RealityDiff { left_event_id: left_event_id.into(), right_event_id: right_event_id.into(), common_prefix, divergence_index, divergence_stage, divergence_reason, left_hash, right_hash, left, right, synthetic: true }
+pub fn qlf_certificate_linkage(event_id: &str) -> QlfCertificateLinkage {
+    let envelope = synthetic_event(event_id); let event = &envelope.links[0]; let qlf = &envelope.links[1]; let execution = &envelope.links[3];
+    let linked = qlf.parent_id.as_deref() == Some(event.id.as_str()) && execution.parent_id.as_deref() == Some("deploy-7A91");
+    QlfCertificateLinkage { event_id: event_id.into(), qlf_certificate_id: qlf.id.clone(), qlf_state: "ZFA-balanced | phase=+-+- | spectral=c·I".into(), certificate_hash: qlf.content_hash.clone(), parent_event_hash: event.content_hash.clone(), linked_execution_hash: execution.content_hash.clone(), linkage_verified: linked, semantic_claims: vec!["ZFA balance is represented as certificate data.".into(), "Symmetric spectral form is represented as c·I certificate data.".into(), "QLF linkage identifies the execution context but does not prove RChain finality.".into()], synthetic: true, claim_boundary: "Synthetic deterministic QLF linkage; it demonstrates provenance binding and does not claim a live Lean proof or production finality proof.".into() }
 }
