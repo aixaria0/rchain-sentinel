@@ -37,7 +37,7 @@ async function load(){
     document.getElementById('node').textContent=d.source?.nodeUrl||'-';
     document.getElementById('version').textContent=d.source?.version||'-';
     document.getElementById('network').textContent=[d.source?.networkId,d.source?.shardId].filter(Boolean).join(' / ')||'-';
-    document.getElementById('height').textContent=d.network?.rnode?.last_finalized_block_number ?? d.network?.rnode?.lastFinalizedBlockNumber ?? '-';
+    document.getElementById('height').textContent=d.network?.rnode?.last_finalized_block_number ?? d.network?.rnode?.lastFinalizedBlockNumber ?? d.crossNode?.common_finalized_height ?? d.crossNode?.commonFinalizedHeight ?? '-';
     document.getElementById('hash').textContent=d.finalized?.blockHash||'-';
     document.getElementById('canonical').textContent=String(d.finalized?.canonicalConsistency ?? 'unknown');
     document.getElementById('bonds').textContent=`${d.casper?.bond_count ?? d.casper?.bondCount ?? 0} / valid=${d.casper?.bond_structure_valid ?? d.casper?.bondStructureValid ?? 'unknown'}`;
