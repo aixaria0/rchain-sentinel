@@ -13,7 +13,7 @@ mod rnode;
 mod semantic_diff;
 mod verification;
 
-use axum::{extract::{Path, State}, response::Html, routing::get, Json, Router};
+use axum::{extract::{Path, Query, State}, response::Html, routing::get, Json, Router};
 use adapters::{adapter_registry, AdapterRegistry};
 use adversarial::{challenge_event, AdversarialChallenge};
 use attestation::{SentinelAttestationService, SignedSentinelAttestation};
@@ -47,7 +47,9 @@ async fn verify_network(State(state): State<AppState>) -> Json<VerificationRepor
 async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> { let network_status = state.rnode.status().await; let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url)) }
 async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceReport> { let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(CasperEvidenceEngine::analyze(&evidence)) }
 async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> { Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await) }
-async fn attestation_snapshot(State(state): State<AppState>) -> Result<Json<SignedSentinelAttestation>, (axum::http::StatusCode, String)> {
+#[derive(serde::Deserialize)]
+struct AttestationQuery { nonce: String }
+async fn attestation_snapshot(State(state): State<AppState>, Query(query): Query<AttestationQuery>) -> Result<Json<SignedSentinelAttestation>, (axum::http::StatusCode, String)> {
     let service = state.attestation.as_ref().ok_or_else(|| {
         (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -60,7 +62,7 @@ async fn attestation_snapshot(State(state): State<AppState>) -> Result<Json<Sign
         )
     })?;
     service
-        .collect_and_sign(&state.rnode, &state.rnode_urls)
+        .collect_and_sign(&state.rnode, &state.rnode_urls, &query.nonce)
         .await
         .map(Json)
         .map_err(|error| (axum::http::StatusCode::BAD_GATEWAY, error))
