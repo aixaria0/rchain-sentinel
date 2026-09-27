@@ -1,4 +1,4 @@
-use crate::models::{FinalizedBlockEvidence, NetworkStatus, RNodeStatusPayload};
+use crate::models::{FinalizedBlockEvidence, GenesisEvidence, NetworkStatus, RNodeStatusPayload};
 use reqwest::Client;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -44,6 +44,52 @@ impl RNodeClient {
         let status = response.status();
         if !status.is_success() { return Err(format!("RNode endpoint {} returned HTTP {}", path, status.as_u16())); }
         response.json::<Value>().await.map_err(|error| format!("Failed to parse {} response: {}", path, error))
+    }
+
+    pub async fn fetch_genesis_evidence(&self, expected_hash: &str) -> GenesisEvidence {
+        let configured_hash = expected_hash.trim().to_string();
+        if configured_hash.is_empty() {
+            return GenesisEvidence::unavailable(
+                configured_hash,
+                "configured genesis hash is empty",
+            );
+        }
+
+        match self.fetch_block(&configured_hash).await {
+            Ok(raw) => {
+                let serialized = match serde_json::to_vec(&raw) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return GenesisEvidence::unavailable(
+                            configured_hash,
+                            format!("failed to serialize genesis block response: {error}"),
+                        )
+                    }
+                };
+                let payload_sha256 = format!("sha256:{:x}", Sha256::digest(&serialized));
+                let observed_hash =
+                    Self::find_string(&raw, &["blockHash", "block_hash", "hash", "id"]);
+                let observed_height =
+                    Self::find_u64(&raw, &["blockNumber", "block_number", "height"]);
+                let hash_match = observed_hash
+                    .as_ref()
+                    .map(|value| value.eq_ignore_ascii_case(&configured_hash));
+                let height_zero = observed_height.map(|height| height == 0);
+
+                GenesisEvidence {
+                    configured_hash,
+                    available: true,
+                    raw: Some(raw),
+                    payload_sha256: Some(payload_sha256),
+                    observed_hash,
+                    observed_height,
+                    hash_match,
+                    height_zero,
+                    error: None,
+                }
+            }
+            Err(error) => GenesisEvidence::unavailable(configured_hash, error),
+        }
     }
 
     pub async fn fetch_last_finalized_block_evidence(&self) -> Result<FinalizedBlockEvidence, String> {
@@ -119,6 +165,27 @@ impl RNodeClient {
     fn find_parent_hash(value: &Value) -> Option<String> { Self::find_string(value, &["parentHash", "parent_hash", "parentsHash", "parents_hash"]).or_else(|| Self::find_first_array_string(value, &["parents"])) }
     fn find_first_array_string(value: &Value, keys: &[&str]) -> Option<String> { match value { Value::Object(map) => { for key in keys { if let Some(Value::Array(items)) = map.get(*key) { if let Some(first) = items.iter().find_map(Self::scalar_string) { return Some(first); } } } map.values().find_map(|nested| Self::find_first_array_string(nested, keys)) }, Value::Array(items) => items.iter().find_map(|item| Self::find_first_array_string(item, keys)), _ => None } }
     fn find_string(value: &Value, keys: &[&str]) -> Option<String> { match value { Value::Object(map) => { for key in keys { if let Some(candidate) = map.get(*key) { if let Some(text) = Self::scalar_string(candidate) { return Some(text); } } } map.values().find_map(|nested| Self::find_string(nested, keys)) }, Value::Array(items) => items.iter().find_map(|item| Self::find_string(item, keys)), _ => None } }
+    fn find_u64(value: &Value, keys: &[&str]) -> Option<u64> {
+        match value {
+            Value::Object(map) => {
+                for key in keys {
+                    if let Some(candidate) = map.get(*key) {
+                        if let Some(number) = candidate.as_u64() {
+                            return Some(number);
+                        }
+                        if let Some(text) = candidate.as_str() {
+                            if let Ok(number) = text.parse::<u64>() {
+                                return Some(number);
+                            }
+                        }
+                    }
+                }
+                map.values().find_map(|nested| Self::find_u64(nested, keys))
+            }
+            Value::Array(items) => items.iter().find_map(|item| Self::find_u64(item, keys)),
+            _ => None,
+        }
+    }
     fn contains_key(value: &Value, keys: &[&str]) -> bool { match value { Value::Object(map) => keys.iter().any(|key| map.contains_key(*key)) || map.values().any(|nested| Self::contains_key(nested, keys)), Value::Array(items) => items.iter().any(|item| Self::contains_key(item, keys)), _ => false } }
     fn scalar_string(value: &Value) -> Option<String> { match value { Value::String(text) if !text.is_empty() => Some(text.clone()), Value::Number(number) => Some(number.to_string()), Value::Bool(value) => Some(value.to_string()), _ => None } }
 }
