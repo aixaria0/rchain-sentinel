@@ -5,6 +5,7 @@ mod casper_evidence;
 mod counterfactual;
 mod cross_node;
 mod demo;
+mod generic_evidence;
 mod invariants;
 mod models;
 mod provenance;
