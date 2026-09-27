@@ -1,11 +1,20 @@
 use crate::models::{CrossNodeReport, FinalizedBlockEvidence, NetworkStatus};
 use ed25519_dalek::{Signer, SigningKey};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 pub const SENTINEL_ATTESTATION_SCHEMA: &str = "rchain-sentinel-attestation/v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FailureDomainDeclaration {
+    pub node_url: String,
+    pub operator_id: String,
+    pub provider_id: String,
+    pub region: String,
+    pub failure_domain_id: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SentinelAttestationPayload {
@@ -14,6 +23,7 @@ pub struct SentinelAttestationPayload {
     pub network: NetworkStatus,
     pub finalized_block: FinalizedBlockEvidence,
     pub cross_node: CrossNodeReport,
+    pub failure_domains: Vec<FailureDomainDeclaration>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,6 +40,85 @@ pub struct SignedSentinelAttestation {
     pub payload: SentinelAttestationPayload,
     pub payload_sha256: String,
     pub signature: SentinelAttestationSignature,
+}
+
+pub fn load_failure_domain_declarations(
+    rnode_urls: &[String],
+) -> Result<Vec<FailureDomainDeclaration>, String> {
+    let raw = if let Ok(path) = std::env::var("RCHAIN_SENTINEL_FAILURE_DOMAINS_FILE") {
+        fs::read_to_string(Path::new(&path))
+            .map_err(|error| format!("failed to read failure-domain declaration file: {error}"))?
+    } else if let Ok(value) = std::env::var("RCHAIN_SENTINEL_FAILURE_DOMAINS_JSON") {
+        value
+    } else {
+        return Err(
+            "signed Sentinel attestation requires RCHAIN_SENTINEL_FAILURE_DOMAINS_FILE or RCHAIN_SENTINEL_FAILURE_DOMAINS_JSON"
+                .to_string(),
+        );
+    };
+
+    let declarations: Vec<FailureDomainDeclaration> = serde_json::from_str(&raw)
+        .map_err(|error| format!("invalid failure-domain declaration JSON: {error}"))?;
+    validate_failure_domain_declarations(rnode_urls, declarations)
+}
+
+pub fn validate_failure_domain_declarations(
+    rnode_urls: &[String],
+    declarations: Vec<FailureDomainDeclaration>,
+) -> Result<Vec<FailureDomainDeclaration>, String> {
+    let configured: BTreeSet<String> =
+        rnode_urls.iter().map(|url| normalize_url(url)).collect();
+    if configured.is_empty() {
+        return Err("failure-domain declarations require at least one configured RNode target".to_string());
+    }
+
+    let mut normalized = Vec::with_capacity(declarations.len());
+    let mut declared = BTreeSet::new();
+    for item in declarations {
+        let node_url = normalize_url(&item.node_url);
+        let operator_id = item.operator_id.trim().to_string();
+        let provider_id = item.provider_id.trim().to_string();
+        let region = item.region.trim().to_string();
+        let failure_domain_id = item.failure_domain_id.trim().to_string();
+
+        if node_url.is_empty()
+            || operator_id.is_empty()
+            || provider_id.is_empty()
+            || region.is_empty()
+            || failure_domain_id.is_empty()
+        {
+            return Err(
+                "failure-domain declarations require non-empty node_url, operator_id, provider_id, region, and failure_domain_id"
+                    .to_string(),
+            );
+        }
+        if !declared.insert(node_url.clone()) {
+            return Err(format!("duplicate failure-domain declaration for target {node_url}"));
+        }
+
+        normalized.push(FailureDomainDeclaration {
+            node_url,
+            operator_id,
+            provider_id,
+            region,
+            failure_domain_id,
+        });
+    }
+
+    if declared != configured {
+        let missing = configured.difference(&declared).cloned().collect::<Vec<_>>();
+        let extra = declared.difference(&configured).cloned().collect::<Vec<_>>();
+        return Err(format!(
+            "failure-domain declarations must exactly cover configured RNode targets; missing={missing:?}, extra={extra:?}"
+        ));
+    }
+
+    normalized.sort_by(|left, right| left.node_url.cmp(&right.node_url));
+    Ok(normalized)
+}
+
+fn normalize_url(value: &str) -> String {
+    value.trim().trim_end_matches('/').to_string()
 }
 
 pub struct AttestationSigner {
@@ -80,6 +169,7 @@ impl AttestationSigner {
         network: NetworkStatus,
         finalized_block: FinalizedBlockEvidence,
         cross_node: CrossNodeReport,
+        failure_domains: Vec<FailureDomainDeclaration>,
     ) -> Result<SignedSentinelAttestation, String> {
         let payload = SentinelAttestationPayload {
             schema: SENTINEL_ATTESTATION_SCHEMA,
@@ -87,6 +177,7 @@ impl AttestationSigner {
             network,
             finalized_block,
             cross_node,
+            failure_domains,
         };
 
         let payload_bytes = canonical_json_bytes(&payload)?;
@@ -212,6 +303,25 @@ mod tests {
         }
     }
 
+    fn failure_domains() -> Vec<FailureDomainDeclaration> {
+        vec![
+            FailureDomainDeclaration {
+                node_url: "http://node-a:40403".to_string(),
+                operator_id: "operator-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                region: "region-a".to_string(),
+                failure_domain_id: "domain-a".to_string(),
+            },
+            FailureDomainDeclaration {
+                node_url: "http://node-b:40403".to_string(),
+                operator_id: "operator-b".to_string(),
+                provider_id: "provider-b".to_string(),
+                region: "region-b".to_string(),
+                failure_domain_id: "domain-b".to_string(),
+            },
+        ]
+    }
+
     fn cross_node() -> CrossNodeReport {
         CrossNodeReport {
             target_count: 2,
@@ -281,6 +391,7 @@ mod tests {
                 network(),
                 FinalizedBlockEvidence::unavailable("fixture"),
                 cross_node(),
+                failure_domains(),
             )
             .expect("snapshot");
 
@@ -300,6 +411,45 @@ mod tests {
             .verifying_key()
             .verify(&signing_bytes(&payload_bytes), &signature)
             .expect("signature verifies");
+    }
+
+    #[test]
+    fn validates_exact_failure_domain_coverage() {
+        let targets = vec![
+            "http://node-a:40403/".to_string(),
+            "http://node-b:40403".to_string(),
+        ];
+        let validated =
+            validate_failure_domain_declarations(&targets, failure_domains()).expect("valid declarations");
+        assert_eq!(validated.len(), 2);
+        assert_eq!(validated[0].node_url, "http://node-a:40403");
+        assert_eq!(validated[1].node_url, "http://node-b:40403");
+    }
+
+    #[test]
+    fn rejects_missing_or_duplicate_failure_domain_declarations() {
+        let targets = vec![
+            "http://node-a:40403".to_string(),
+            "http://node-b:40403".to_string(),
+        ];
+
+        assert!(validate_failure_domain_declarations(
+            &targets,
+            vec![failure_domains()[0].clone()],
+        )
+        .unwrap_err()
+        .contains("exactly cover"));
+
+        let duplicate = vec![
+            failure_domains()[0].clone(),
+            FailureDomainDeclaration {
+                node_url: "http://node-a:40403/".to_string(),
+                ..failure_domains()[1].clone()
+            },
+        ];
+        assert!(validate_failure_domain_declarations(&targets, duplicate)
+            .unwrap_err()
+            .contains("duplicate"));
     }
 
     #[test]
