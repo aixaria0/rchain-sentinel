@@ -374,3 +374,10 @@ The signature is domain-separated with `rchain-sentinel-attestation/v1`.
 If `SENTINEL_ED25519_SEED_HEX` is absent, ordinary Sentinel operation continues and the attestation endpoint returns HTTP 503. If the variable is present but malformed, Sentinel fails startup rather than silently running with an unexpected signing identity.
 
 A valid signature proves possession of the corresponding private key. Trust still requires consumers to pin or otherwise authorize the expected public-key fingerprint; a public key supplied by the same response is not by itself an identity policy.
+
+
+### Time and key-distribution boundary
+
+On startup, a configured signer prints only its public Ed25519 key and SHA-256 key fingerprint, never the private seed. Operators can publish that fingerprint through a separate trusted channel for pinning.
+
+The signed `collected_at_unix_ms` timestamp is tamper-evident because it is inside the signature, but it is **not trusted time**: a misconfigured host clock can still produce a valid signature over an incorrect time. Consumers should treat clock synchronization/attestation as a separate operational assumption when applying freshness budgets.
