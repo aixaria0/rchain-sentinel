@@ -85,6 +85,10 @@ impl SentinelSigner {
         format!("sha256:{}", encode_hex(&digest))
     }
 
+    pub fn public_key_hex(&self) -> String {
+        encode_hex(self.key_pair.public_key().as_ref())
+    }
+
     pub fn sign(&self, payload: SentinelAttestationPayload) -> Result<SignedSentinelSnapshot, String> {
         let payload_bytes = canonical_payload_bytes(&payload)?;
         let payload_digest = Sha256::digest(&payload_bytes);
