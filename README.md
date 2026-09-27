@@ -128,6 +128,7 @@ That distinction is intentional. The system is built to make unsupported claims 
 - Bond/stake structure analysis and duplicate/invalid bond detection.
 - Equivocation-shaped signal detection without treating heuristics as authenticated proof.
 - Deterministic machine-readable verification results.
+- Optional pinned-key Ed25519 attestation snapshots that bind network status, finalized-block evidence, and cross-node observations into one signed payload.
 - Rust/Axum service with deployment-ready container configuration.
 
 ---
@@ -144,6 +145,7 @@ That distinction is intentional. The system is built to make unsupported claims 
 | `GET /api/verify/block` | Finalized-block verification |
 | `GET /api/verify/casper` | Casper evidence inventory |
 | `GET /api/verify/cross-node` | Cross-node agreement analysis |
+| `GET /api/attestation/snapshot` | Signed `rchain-sentinel-attestation/v1` snapshot; returns `503` when signing is not configured |
 | `GET /api/explorer/block` | Unified block-centric evidence package |
 | `GET /api/block/{hash}` | Direct block proxy |
 | `GET /api/is-finalized/{hash}` | Direct finality assertion proxy |
@@ -239,7 +241,29 @@ RCHAIN_RNODE_URL=http://localhost:40403 cargo run
 RCHAIN_RNODE_URLS=http://node-a:40403,http://node-b:40403,http://node-c:40403 cargo run
 ```
 
-`RCHAIN_RNODE_URLS` takes precedence for cross-node analysis. If it is unset, Sentinel falls back to `RCHAIN_RNODE_URL`.
+RCHAIN_RNODE_URLS takes precedence for cross-node analysis. If it is unset, Sentinel falls back to RCHAIN_RNODE_URL.
+
+### Enable signed assurance snapshots
+
+Promotion-grade live evidence can be exposed through `GET /api/attestation/snapshot`. The endpoint signs the canonical JSON payload with Ed25519 and includes:
+
+- network status;
+- finalized-block evidence;
+- cross-node agreement report;
+- payload SHA-256;
+- public-key fingerprint (`key_id`);
+- detached Ed25519 signature.
+
+For deployments, prefer a mounted secret file containing exactly 32 private-key bytes encoded as 64 hexadecimal characters:
+
+```bash
+export RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_FILE=/run/secrets/sentinel-ed25519.hex
+cargo run
+```
+
+For local staging only, the same 64-hex secret can be supplied with `RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_HEX`.
+
+The service never generates or persists a private key. If neither variable is present, the ordinary observation APIs remain available and the signed endpoint returns `503 Service Unavailable`. Invalid key material fails startup rather than silently serving unsigned data.
 
 The service uses `PORT` when supplied by a deployment platform and otherwise listens on `8080`.
 
