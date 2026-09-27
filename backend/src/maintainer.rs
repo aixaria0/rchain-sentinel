@@ -57,7 +57,7 @@ impl MaintainerCollector {
         let canonical_consistency = finalized.canonical_consistency;
         let node_reported_finalized = finalized.node_reported_finalized;
         let bond_structure = casper.evidence_available.then_some(casper.bond_structure_valid);
-        let cross_node_agreement = (cross_node.target_count > 0 && cross_node.reachable_count > 0).then_some(cross_node.agreement);
+        let cross_node_agreement = (cross_node.target_count >= 2 && cross_node.reachable_count >= 2).then_some(cross_node.agreement);
 
         let (verdict, first_attention) = classify(
             status_readable,
@@ -74,7 +74,11 @@ impl MaintainerCollector {
         let network_id = network.rnode.as_ref().and_then(|s| s.network_id.clone());
         let shard_id = network.rnode.as_ref().and_then(|s| s.shard_id.clone());
         let latest_block = network.rnode.as_ref().and_then(|s| s.latest_block_number);
-        let finalized_height = network.rnode.as_ref().and_then(|s| s.last_finalized_block_number);
+        let finalized_height = network
+            .rnode
+            .as_ref()
+            .and_then(|s| s.last_finalized_block_number)
+            .or(cross_node.common_finalized_height);
         let version_value = version.as_ref().ok().map(|v| v.trim().to_string());
 
         let source = json!({
@@ -177,6 +181,7 @@ impl MaintainerCollector {
             caveats: vec![
                 "This collector performs GET-only observation against the configured RNode endpoints.".to_string(),
                 "The public HTTP API does not expose every native PoS map; trusted-set and pending-withdrawal state remain unavailable unless an explicit read surface is added upstream.".to_string(),
+                "Cross-node agreement is reported only when at least two configured observers are reachable; one node is not treated as independent corroboration.".to_string(),
                 "Cross-node agreement is corroborating evidence, not a stake-weighted Casper safety proof.".to_string(),
             ],
         }
@@ -299,5 +304,12 @@ mod tests {
         let (verdict, attention) = classify(true, true, true, true, true, Some(true), None, Some(true), Some(true));
         assert_eq!(verdict, "INCOMPLETE");
         assert!(attention.unwrap().contains("finality assertion"));
+    }
+
+    #[test]
+    fn missing_independent_observer_is_incomplete() {
+        let (verdict, attention) = classify(true, true, true, true, true, Some(true), Some(true), Some(true), None);
+        assert_eq!(verdict, "INCOMPLETE");
+        assert!(attention.unwrap().contains("cross-node"));
     }
 }
