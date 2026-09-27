@@ -32,7 +32,7 @@ use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
-struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>>, attestation_signer: Option<Arc<AttestationSigner>>, failure_domains: Arc<Vec<FailureDomainDeclaration>> }
+struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>>, attestation_signer: Option<Arc<AttestationSigner>>, failure_domains: Arc<Vec<FailureDomainDeclaration>>, genesis_hash: Option<Arc<String>> }
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
@@ -48,6 +48,11 @@ async fn attestation_snapshot(State(state): State<AppState>) -> Result<Json<Sign
         "Sentinel attestation signing is not configured".to_string(),
     ))?;
     let network = state.rnode.status().await;
+    let genesis_hash = state.genesis_hash.as_ref().ok_or_else(|| (
+        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        "Sentinel signed genesis identity is not configured".to_string(),
+    ))?;
+    let genesis = state.rnode.fetch_genesis_evidence(genesis_hash).await;
     let finalized_block = match state.rnode.fetch_last_finalized_block_evidence().await {
         Ok(evidence) => evidence,
         Err(error) => FinalizedBlockEvidence::unavailable(error),
@@ -61,7 +66,7 @@ async fn attestation_snapshot(State(state): State<AppState>) -> Result<Json<Sign
         ))?
         .as_millis() as u64;
     signer
-        .sign_snapshot(collected_at_unix_ms, network, finalized_block, cross_node, (*state.failure_domains).clone())
+        .sign_snapshot(collected_at_unix_ms, network, genesis, finalized_block, cross_node, (*state.failure_domains).clone())
         .map(Json)
         .map_err(|error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, error))
 }
@@ -123,10 +128,22 @@ async fn main() {
     } else {
         Vec::new()
     };
+    let genesis_hash = if attestation_signer.is_some() {
+        match std::env::var("RCHAIN_SENTINEL_GENESIS_HASH") {
+            Ok(value) if !value.trim().is_empty() => Some(Arc::new(value.trim().to_string())),
+            _ => {
+                eprintln!("Signed Sentinel attestation requires non-empty RCHAIN_SENTINEL_GENESIS_HASH");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        None
+    };
     match &attestation_signer {
         Some(signer) => {
             println!("Signed attestation endpoint enabled; key id: {}", signer.key_id());
             println!("Signed failure-domain declarations: {}", failure_domains.len());
+            println!("Signed genesis challenge configured.");
         }
         None => println!("Signed attestation endpoint disabled; configure RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_FILE for promotion-grade evidence."),
     }
@@ -135,6 +152,7 @@ async fn main() {
         rnode_urls: Arc::new(rnode_urls),
         attestation_signer,
         failure_domains: Arc::new(failure_domains),
+        genesis_hash,
     };
     let app = Router::new()
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
