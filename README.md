@@ -346,7 +346,7 @@ Apache License 2.0
 
 ## Signed assurance snapshot
 
-The optional `GET /api/attestation/snapshot` endpoint produces a promotion-grade
+The optional `GET /api/attestation/snapshot?nonce=<64-lowercase-hex>` endpoint produces a promotion-grade
 `rchain-sentinel-attestation/v1` snapshot for the Assurance Fabric.
 
 It is deliberately fail-closed and is disabled unless all of the following are configured:
@@ -379,6 +379,7 @@ Example declaration shape:
 
 The signed payload binds, in one canonical snapshot:
 
+- the verifier-supplied 32-byte challenge nonce, preventing an older valid snapshot from satisfying a different live verification request;
 - network status;
 - the configured genesis hash and the block returned for that hash;
 - finalized-block evidence;
@@ -387,6 +388,8 @@ The signed payload binds, in one canonical snapshot:
 
 The Ed25519 key fingerprint is published as `sha256:<hex>`. The corresponding
 private key is read only from the environment and is never written by Sentinel.
+
+The nonce must be exactly 64 lowercase hexadecimal characters. Sentinel echoes it only inside the signed payload; malformed or missing challenges are rejected before a promotion-grade snapshot is produced.
 
 Failure-domain metadata is a signed declaration, not independent proof that two
 operators or providers are genuinely independent. Cross-node agreement also
