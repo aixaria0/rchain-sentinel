@@ -15,7 +15,7 @@ mod verification;
 
 use axum::{extract::{Path, State}, response::Html, routing::get, Json, Router};
 use adapters::{adapter_registry, AdapterRegistry};
-use attestation::{AttestationSigner, SignedSentinelAttestation};
+use attestation::{load_failure_domain_declarations, AttestationSigner, FailureDomainDeclaration, SignedSentinelAttestation};
 use adversarial::{challenge_event, AdversarialChallenge};
 use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
@@ -32,7 +32,7 @@ use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
-struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>>, attestation_signer: Option<Arc<AttestationSigner>> }
+struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>>, attestation_signer: Option<Arc<AttestationSigner>>, failure_domains: Arc<Vec<FailureDomainDeclaration>> }
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
@@ -61,7 +61,7 @@ async fn attestation_snapshot(State(state): State<AppState>) -> Result<Json<Sign
         ))?
         .as_millis() as u64;
     signer
-        .sign_snapshot(collected_at_unix_ms, network, finalized_block, cross_node)
+        .sign_snapshot(collected_at_unix_ms, network, finalized_block, cross_node, (*state.failure_domains).clone())
         .map(Json)
         .map_err(|error| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, error))
 }
@@ -112,11 +112,30 @@ async fn main() {
             std::process::exit(2);
         }
     };
+    let failure_domains = if attestation_signer.is_some() {
+        match load_failure_domain_declarations(&rnode_urls) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("Invalid Sentinel failure-domain configuration: {error}");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        Vec::new()
+    };
     match &attestation_signer {
-        Some(signer) => println!("Signed attestation endpoint enabled; key id: {}", signer.key_id()),
+        Some(signer) => {
+            println!("Signed attestation endpoint enabled; key id: {}", signer.key_id());
+            println!("Signed failure-domain declarations: {}", failure_domains.len());
+        }
         None => println!("Signed attestation endpoint disabled; configure RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_FILE for promotion-grade evidence."),
     }
-    let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls), attestation_signer };
+    let state = AppState {
+        rnode: Arc::new(RNodeClient::new(rnode_url)),
+        rnode_urls: Arc::new(rnode_urls),
+        attestation_signer,
+        failure_domains: Arc::new(failure_domains),
+    };
     let app = Router::new()
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
         .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
