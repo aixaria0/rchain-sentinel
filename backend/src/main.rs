@@ -120,6 +120,10 @@ async fn main() {
     println!("RNode target: {}", rnode_url);
     println!("Cross-node targets: {}", rnode_urls.len());
     println!("Signed attestation endpoint: {}", if signer.is_some() { "enabled" } else { "disabled" });
+    if let Some(active_signer) = signer.as_ref() {
+        println!("Sentinel attestation key id: {}", active_signer.key_id());
+        println!("Sentinel attestation public key: {}", active_signer.public_key_hex());
+    }
     let state = AppState {
         rnode: Arc::new(RNodeClient::new(rnode_url)),
         rnode_urls: Arc::new(rnode_urls),
