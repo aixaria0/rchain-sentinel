@@ -1,4 +1,5 @@
 mod adapters;
+mod attestation;
 mod adversarial;
 mod block_verification;
 mod casper_evidence;
@@ -12,8 +13,9 @@ mod rnode;
 mod semantic_diff;
 mod verification;
 
-use axum::{extract::{Path, State}, response::Html, routing::get, Json, Router};
+use axum::{extract::{Path, State}, http::StatusCode, response::Html, routing::get, Json, Router};
 use adapters::{adapter_registry, AdapterRegistry};
+use attestation::{SentinelAttestationPayload, SentinelSigner, SignedSentinelSnapshot};
 use adversarial::{challenge_event, AdversarialChallenge};
 use block_verification::BlockVerificationEngine;
 use casper_evidence::CasperEvidenceEngine;
@@ -30,7 +32,11 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
-struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>> }
+struct AppState {
+    rnode: Arc<RNodeClient>,
+    rnode_urls: Arc<Vec<String>>,
+    signer: Arc<Option<SentinelSigner>>,
+}
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
@@ -40,6 +46,35 @@ async fn verify_network(State(state): State<AppState>) -> Json<VerificationRepor
 async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> { let network_status = state.rnode.status().await; let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url)) }
 async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceReport> { let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(CasperEvidenceEngine::analyze(&evidence)) }
 async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> { Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await) }
+
+async fn signed_attestation_snapshot(
+    State(state): State<AppState>,
+) -> Result<Json<SignedSentinelSnapshot>, (StatusCode, String)> {
+    let signer = state
+        .signer
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Sentinel signing is disabled; configure SENTINEL_ED25519_SEED_HEX with a 32-byte hex seed.".to_string(),
+        ))?;
+
+    let (network, finalized_result, cross_node) = tokio::join!(
+        state.rnode.status(),
+        state.rnode.fetch_last_finalized_block_evidence(),
+        CrossNodeVerificationEngine::verify(&state.rnode_urls),
+    );
+    let finalized_block = match finalized_result {
+        Ok(evidence) => evidence,
+        Err(error) => FinalizedBlockEvidence::unavailable(error),
+    };
+    let payload = SentinelAttestationPayload::new(network, finalized_block, cross_node)
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
+    let signed = signer
+        .sign(payload)
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
+    Ok(Json(signed))
+}
 async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> { Json(synthetic_event(&event_id)) }
 async fn reality_diff(Path((left, right)): Path<(String, String)>) -> Json<RealityDiff> { Json(diff_events(&left, &right)) }
 async fn reality_semantic_diff(Path((left, right)): Path<(String, String)>) -> Json<SemanticRealityDiff> { Json(semantic_diff(&left, &right)) }
@@ -79,12 +114,22 @@ async fn main() {
     let rnode_url = std::env::var("RCHAIN_RNODE_URL").unwrap_or_else(|_| "http://localhost:40403".to_string());
     let rnode_urls = std::env::var("RCHAIN_RNODE_URLS").ok().map(|value| value.split(',').map(str::trim).filter(|url| !url.is_empty()).map(ToOwned::to_owned).collect::<Vec<_>>()).filter(|urls| !urls.is_empty()).unwrap_or_else(|| vec![rnode_url.clone()]);
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    println!("RChain Sentinel"); println!("RNode target: {}", rnode_url); println!("Cross-node targets: {}", rnode_urls.len());
-    let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls) };
+    let signer = SentinelSigner::from_env()
+        .unwrap_or_else(|error| panic!("invalid Sentinel attestation signing configuration: {error}"));
+    println!("RChain Sentinel");
+    println!("RNode target: {}", rnode_url);
+    println!("Cross-node targets: {}", rnode_urls.len());
+    println!("Signed attestation endpoint: {}", if signer.is_some() { "enabled" } else { "disabled" });
+    let state = AppState {
+        rnode: Arc::new(RNodeClient::new(rnode_url)),
+        rnode_urls: Arc::new(rnode_urls),
+        signer: Arc::new(signer),
+    };
     let app = Router::new()
         .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
         .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
         .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
+        .route("/api/attestation/snapshot", get(signed_attestation_snapshot))
         .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge)).route("/api/reality/qlf/{event_id}", get(reality_qlf)).route("/api/reality/adapters", get(reality_adapters)).route("/api/reality/invariants/{event_id}", get(reality_invariants)).route("/api/reality/demo/{event_id}", get(reality_demo))
         .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
         .with_state(state).layer(CorsLayer::permissive());
