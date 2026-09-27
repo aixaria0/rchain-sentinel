@@ -294,6 +294,14 @@ Example:
 
 `RCHAIN_SENTINEL_FAILURE_DOMAINS_JSON` is also accepted for staging. The declared target set must exactly match `RCHAIN_RNODE_URLS`; missing, extra, duplicate, or partially empty declarations fail startup when signing is enabled. These declarations are included inside the Ed25519-signed snapshot, making the claimed operational topology tamper-evident. They remain operator declarations, not external proof that the operators/providers/regions are truly independent.
 
+Signing also requires the expected genesis block hash:
+
+```bash
+export RCHAIN_SENTINEL_GENESIS_HASH=<expected-genesis-block-hash>
+```
+
+Sentinel does not merely copy this value into the attestation. For every signed snapshot it queries the configured RNode with `/api/block/{hash}`, records the returned block, extracts its canonical block hash and block number, and checks both **hash equality** and **blockNumber = 0**. The signed snapshot therefore distinguishes a configured genesis trust anchor from an RNode-observed genesis witness. If the block cannot be retrieved or the identity/height does not match, the observation remains signed but cannot satisfy the strict Reality Plane promotion gate.
+
 The service uses `PORT` when supplied by a deployment platform and otherwise listens on `8080`.
 
 ---
