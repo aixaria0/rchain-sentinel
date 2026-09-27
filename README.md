@@ -265,6 +265,35 @@ For local staging only, the same 64-hex secret can be supplied with `RCHAIN_SENT
 
 The service never generates or persists a private key. If neither variable is present, the ordinary observation APIs remain available and the signed endpoint returns `503 Service Unavailable`. Invalid key material fails startup rather than silently serving unsigned data.
 
+When signing is enabled, Sentinel also requires an explicit failure-domain declaration for every configured RNode target. Prefer a mounted JSON file:
+
+```bash
+export RCHAIN_SENTINEL_FAILURE_DOMAINS_FILE=/run/secrets/rnode-failure-domains.json
+```
+
+Example:
+
+```json
+[
+  {
+    "node_url": "http://node-a:40403",
+    "operator_id": "operator-a",
+    "provider_id": "provider-a",
+    "region": "region-a",
+    "failure_domain_id": "domain-a"
+  },
+  {
+    "node_url": "http://node-b:40403",
+    "operator_id": "operator-b",
+    "provider_id": "provider-b",
+    "region": "region-b",
+    "failure_domain_id": "domain-b"
+  }
+]
+```
+
+`RCHAIN_SENTINEL_FAILURE_DOMAINS_JSON` is also accepted for staging. The declared target set must exactly match `RCHAIN_RNODE_URLS`; missing, extra, duplicate, or partially empty declarations fail startup when signing is enabled. These declarations are included inside the Ed25519-signed snapshot, making the claimed operational topology tamper-evident. They remain operator declarations, not external proof that the operators/providers/regions are truly independent.
+
 The service uses `PORT` when supplied by a deployment platform and otherwise listens on `8080`.
 
 ---
