@@ -68,3 +68,21 @@ mod tests {
         assert!(envelope.validate().is_err());
     }
 }
+
+#[cfg(test)]
+mod cross_repo_fixture_tests {
+    use super::*;
+    const FIXTURE: &[u8] = b"causal-assurance-fixture/v1\nrun=fixture-001\nsubject=finite-state-model:dual-refinement-fixture\nwitness=valid-down,valid-finish\ncost=2,1\n";
+    const DIGEST: &str = "sha256:4f4fd3c2715b193a78d79ac0be11c893aa7bfdc6f9a52ca7de1240d64f2a1703";
+
+    #[test]
+    fn canonical_cross_repo_fixture_matches_frozen_digest() {
+        let envelope = GenericEvidenceEnvelope::new(
+            "cross-repo-fixture", "verification-artifact", 1, "dual-refinement-fixture",
+            FIXTURE, BTreeMap::new()
+        );
+        assert_eq!(envelope.payload_sha256, DIGEST);
+        assert!(envelope.verify_payload(FIXTURE).is_ok());
+        assert!(envelope.verify_payload(b"tampered").is_err());
+    }
+}
