@@ -41,6 +41,7 @@ pub struct SentinelGenesisEvidence {
 pub struct SentinelAttestationPayload {
     pub schema: &'static str,
     pub collected_at_unix_ms: u128,
+    pub challenge_nonce: String,
     pub network: NetworkStatus,
     pub genesis: SentinelGenesisEvidence,
     pub finalized_block: FinalizedBlockEvidence,
@@ -110,8 +111,10 @@ impl SentinelAttestationService {
         &self,
         rnode: &RNodeClient,
         rnode_urls: &[String],
+        challenge_nonce: &str,
     ) -> Result<SignedSentinelAttestation, String> {
         validate_failure_domains(rnode_urls, &self.failure_domains)?;
+        validate_challenge_nonce(challenge_nonce)?;
 
         let network = rnode.status().await;
         let finalized_block = match rnode.fetch_last_finalized_block_evidence().await {
@@ -129,6 +132,7 @@ impl SentinelAttestationService {
         let payload = SentinelAttestationPayload {
             schema: SENTINEL_ATTESTATION_SCHEMA,
             collected_at_unix_ms,
+            challenge_nonce: challenge_nonce.to_string(),
             network,
             genesis,
             finalized_block,
@@ -161,6 +165,21 @@ impl SentinelAttestationService {
             },
         })
     }
+}
+
+fn validate_challenge_nonce(value: &str) -> Result<(), String> {
+    let valid = value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
+    if !valid {
+        return Err(
+            "attestation nonce must be exactly 32 bytes of lowercase hexadecimal"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn normalize_url(value: &str) -> String {
@@ -347,6 +366,14 @@ mod tests {
                 failure_domain_id: "fd-b".to_string(),
             },
         ]
+    }
+
+    #[test]
+    fn challenge_nonce_requires_exact_lowercase_32_byte_hex() {
+        assert!(validate_challenge_nonce(&"ab".repeat(32)).is_ok());
+        assert!(validate_challenge_nonce(&"AB".repeat(32)).is_err());
+        assert!(validate_challenge_nonce("abcd").is_err());
+        assert!(validate_challenge_nonce(&"zz".repeat(32)).is_err());
     }
 
     #[test]
