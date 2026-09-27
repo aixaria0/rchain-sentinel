@@ -31,6 +31,15 @@ impl GenericEvidenceEnvelope {
         if !self.payload_sha256.starts_with("sha256:") || self.payload_sha256.len() != 71 { return Err("payload_sha256 must be a SHA-256 fingerprint"); }
         Ok(())
     }
+
+    pub fn verify_payload(&self, payload: &[u8]) -> Result<(), &'static str> {
+        self.validate()?;
+        let actual = format!("sha256:{:x}", Sha256::digest(payload));
+        if actual != self.payload_sha256 {
+            return Err("payload digest mismatch");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -44,7 +53,14 @@ mod tests {
         let b = GenericEvidenceEnvelope::new("fixture", "state", 42, "subject-1", b"payload", claims);
         assert_eq!(a, b);
         assert!(a.validate().is_ok());
+        assert!(a.verify_payload(b"payload").is_ok());
     }
+    #[test]
+    fn tampered_payload_is_rejected() {
+        let envelope = GenericEvidenceEnvelope::new("fixture", "state", 42, "subject-1", b"payload", BTreeMap::new());
+        assert!(envelope.verify_payload(b"tampered").is_err());
+    }
+
     #[test]
     fn malformed_digest_is_rejected() {
         let mut envelope = GenericEvidenceEnvelope::new("fixture", "state", 42, "subject-1", b"payload", BTreeMap::new());
