@@ -35,6 +35,35 @@ pub struct RNodeObservation { pub node_id: Option<String>, pub host: Option<Stri
 impl RNodeObservation { pub fn from_status(status: &RNodeStatusPayload) -> Self { let peer_count = status.peers.as_ref().map(|peers| match peers { Value::Array(items) => items.len(), Value::Object(map) => map.len(), _ => 0 }); let (node_id, host, port) = match &status.node { Some(node) => (node.id.clone(), node.host.clone(), node.port), None => (status.address.clone(), None, None) }; Self { node_id, host, port, network_id: status.network_id.clone(), shard_id: status.shard_id.clone(), ready: status.ready, validator: status.validator, read_only: status.read_only, current_epoch: status.current_epoch, finalized_block: status.last_finalized_block_number, latest_block: status.latest_block_number, peer_count } } }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GenesisEvidence {
+    pub configured_hash: String,
+    pub available: bool,
+    pub raw: Option<Value>,
+    pub payload_sha256: Option<String>,
+    pub observed_hash: Option<String>,
+    pub observed_height: Option<u64>,
+    pub hash_match: Option<bool>,
+    pub height_zero: Option<bool>,
+    pub error: Option<String>,
+}
+
+impl GenesisEvidence {
+    pub fn unavailable(configured_hash: impl Into<String>, error: impl Into<String>) -> Self {
+        Self {
+            configured_hash: configured_hash.into(),
+            available: false,
+            raw: None,
+            payload_sha256: None,
+            observed_hash: None,
+            observed_height: None,
+            hash_match: None,
+            height_zero: None,
+            error: Some(error.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct FinalizedBlockEvidence {
     pub available: bool,
     pub raw: Option<Value>,
