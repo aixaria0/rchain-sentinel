@@ -128,6 +128,7 @@ That distinction is intentional. The system is built to make unsupported claims 
 - Bond/stake structure analysis and duplicate/invalid bond detection.
 - Equivocation-shaped signal detection without treating heuristics as authenticated proof.
 - Deterministic machine-readable verification results.
+- Optional pinned-key Ed25519 attestation snapshots that bind network status, finalized-block evidence, and cross-node observations into one signed payload.
 - Rust/Axum service with deployment-ready container configuration.
 
 ---
@@ -144,6 +145,7 @@ That distinction is intentional. The system is built to make unsupported claims 
 | `GET /api/verify/block` | Finalized-block verification |
 | `GET /api/verify/casper` | Casper evidence inventory |
 | `GET /api/verify/cross-node` | Cross-node agreement analysis |
+| `GET /api/attestation/snapshot` | Signed `rchain-sentinel-attestation/v1` snapshot; returns `503` when signing is not configured |
 | `GET /api/explorer/block` | Unified block-centric evidence package |
 | `GET /api/block/{hash}` | Direct block proxy |
 | `GET /api/is-finalized/{hash}` | Direct finality assertion proxy |
@@ -239,7 +241,66 @@ RCHAIN_RNODE_URL=http://localhost:40403 cargo run
 RCHAIN_RNODE_URLS=http://node-a:40403,http://node-b:40403,http://node-c:40403 cargo run
 ```
 
-`RCHAIN_RNODE_URLS` takes precedence for cross-node analysis. If it is unset, Sentinel falls back to `RCHAIN_RNODE_URL`.
+RCHAIN_RNODE_URLS takes precedence for cross-node analysis. If it is unset, Sentinel falls back to RCHAIN_RNODE_URL.
+
+### Enable signed assurance snapshots
+
+Promotion-grade live evidence can be exposed through `GET /api/attestation/snapshot`. The endpoint signs the canonical JSON payload with Ed25519 and includes:
+
+- network status;
+- finalized-block evidence;
+- cross-node agreement report;
+- payload SHA-256;
+- public-key fingerprint (`key_id`);
+- detached Ed25519 signature.
+
+For deployments, prefer a mounted secret file containing exactly 32 private-key bytes encoded as 64 hexadecimal characters:
+
+```bash
+export RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_FILE=/run/secrets/sentinel-ed25519.hex
+cargo run
+```
+
+For local staging only, the same 64-hex secret can be supplied with `RCHAIN_SENTINEL_ED25519_PRIVATE_KEY_HEX`.
+
+The service never generates or persists a private key. If neither variable is present, the ordinary observation APIs remain available and the signed endpoint returns `503 Service Unavailable`. Invalid key material fails startup rather than silently serving unsigned data.
+
+When signing is enabled, Sentinel also requires an explicit failure-domain declaration for every configured RNode target. Prefer a mounted JSON file:
+
+```bash
+export RCHAIN_SENTINEL_FAILURE_DOMAINS_FILE=/run/secrets/rnode-failure-domains.json
+```
+
+Example:
+
+```json
+[
+  {
+    "node_url": "http://node-a:40403",
+    "operator_id": "operator-a",
+    "provider_id": "provider-a",
+    "region": "region-a",
+    "failure_domain_id": "domain-a"
+  },
+  {
+    "node_url": "http://node-b:40403",
+    "operator_id": "operator-b",
+    "provider_id": "provider-b",
+    "region": "region-b",
+    "failure_domain_id": "domain-b"
+  }
+]
+```
+
+`RCHAIN_SENTINEL_FAILURE_DOMAINS_JSON` is also accepted for staging. The declared target set must exactly match `RCHAIN_RNODE_URLS`; missing, extra, duplicate, or partially empty declarations fail startup when signing is enabled. These declarations are included inside the Ed25519-signed snapshot, making the claimed operational topology tamper-evident. They remain operator declarations, not external proof that the operators/providers/regions are truly independent.
+
+Signing also requires the expected genesis block hash:
+
+```bash
+export RCHAIN_SENTINEL_GENESIS_HASH=<expected-genesis-block-hash>
+```
+
+Sentinel does not merely copy this value into the attestation. For every signed snapshot it queries the configured RNode with `/api/block/{hash}`, records the returned block, extracts its canonical block hash and block number, and checks both **hash equality** and **blockNumber = 0**. The signed snapshot therefore distinguishes a configured genesis trust anchor from an RNode-observed genesis witness. If the block cannot be retrieved or the identity/height does not match, the observation remains signed but cannot satisfy the strict Reality Plane promotion gate.
 
 The service uses `PORT` when supplied by a deployment platform and otherwise listens on `8080`.
 
