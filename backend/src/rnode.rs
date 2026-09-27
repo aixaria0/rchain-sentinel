@@ -9,6 +9,18 @@ pub struct RNodeClient { client: Client, base_url: String }
 impl RNodeClient {
     pub fn new(base_url: impl Into<String>) -> Self { Self { client: Client::new(), base_url: base_url.into().trim_end_matches('/').to_string() } }
 
+    pub fn base_url(&self) -> &str { &self.base_url }
+
+    pub async fn read_json(&self, path: &str) -> Result<Value, String> { self.get_json(path).await }
+
+    pub async fn read_text(&self, path: &str) -> Result<String, String> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self.client.get(&url).send().await.map_err(|error| error.to_string())?;
+        let status = response.status();
+        if !status.is_success() { return Err(format!("RNode endpoint {} returned HTTP {}", path, status.as_u16())); }
+        response.text().await.map_err(|error| format!("Failed to read {} response: {}", path, error))
+    }
+
     pub async fn status(&self) -> NetworkStatus {
         let start = std::time::Instant::now();
         let url = format!("{}/api/status", self.base_url);
