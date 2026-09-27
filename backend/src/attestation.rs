@@ -1,6 +1,7 @@
 use crate::models::{CrossNodeReport, FinalizedBlockEvidence, NetworkStatus};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -85,8 +86,7 @@ impl SentinelSigner {
     }
 
     pub fn sign(&self, payload: SentinelAttestationPayload) -> Result<SignedSentinelSnapshot, String> {
-        let payload_bytes = serde_json::to_vec(&payload)
-            .map_err(|error| format!("failed to serialize attestation payload: {error}"))?;
+        let payload_bytes = canonical_payload_bytes(&payload)?;
         let payload_digest = Sha256::digest(&payload_bytes);
         let message = signing_message(&payload_bytes);
         let signature = self.key_pair.sign(&message);
@@ -102,6 +102,29 @@ impl SentinelSigner {
                 signature_hex: encode_hex(signature.as_ref()),
             },
         })
+    }
+}
+
+fn canonical_payload_bytes(payload: &SentinelAttestationPayload) -> Result<Vec<u8>, String> {
+    let value = serde_json::to_value(payload)
+        .map_err(|error| format!("failed to convert attestation payload to JSON: {error}"))?;
+    serde_json::to_vec(&canonicalize_json(value))
+        .map_err(|error| format!("failed to serialize canonical attestation payload: {error}"))
+}
+
+fn canonicalize_json(value: Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.into_iter().map(canonicalize_json).collect()),
+        Value::Object(map) => {
+            let mut entries = map.into_iter().collect::<Vec<_>>();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            let mut canonical = serde_json::Map::new();
+            for (key, value) in entries {
+                canonical.insert(key, canonicalize_json(value));
+            }
+            Value::Object(canonical)
+        }
+        other => other,
     }
 }
 
@@ -264,7 +287,7 @@ mod tests {
         )
         .unwrap();
         let signed = signer.sign(fixture_payload()).unwrap();
-        let payload_bytes = serde_json::to_vec(&signed.payload).unwrap();
+        let payload_bytes = canonical_payload_bytes(&signed.payload).unwrap();
         let message = signing_message(&payload_bytes);
         let public_key = decode_hex(&signed.signature.public_key_hex).unwrap();
         let signature = decode_hex(&signed.signature.signature_hex).unwrap();
@@ -285,7 +308,7 @@ mod tests {
         let mut signed = signer.sign(fixture_payload()).unwrap();
         signed.payload.network.node_url = "http://tampered".to_string();
 
-        let payload_bytes = serde_json::to_vec(&signed.payload).unwrap();
+        let payload_bytes = canonical_payload_bytes(&signed.payload).unwrap();
         let message = signing_message(&payload_bytes);
         let public_key = decode_hex(&signed.signature.public_key_hex).unwrap();
         let signature = decode_hex(&signed.signature.signature_hex).unwrap();
