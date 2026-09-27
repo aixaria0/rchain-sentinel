@@ -57,7 +57,7 @@ impl RNodeClient {
         let justification_present = Self::contains_key(&raw, &["justifications", "justification", "approvedBlock", "approved_block"]);
 
         let mut evidence = FinalizedBlockEvidence::available(raw)
-            .with_sha256(format!("{:x}", digest))
+            .with_sha256(format!("sha256:{:x}", digest))
             .with_block_fields(block_hash.clone(), parent_hash, proposer, signature, justification_present);
 
         if let Some(hash) = block_hash {
