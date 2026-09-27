@@ -342,3 +342,35 @@ Built for evidence-driven verification of decentralized infrastructure.
 ## License
 
 Apache License 2.0
+
+
+## Signed evidence snapshot
+
+Sentinel can optionally expose a cryptographically signed snapshot that binds the network-status observation, finalized-block evidence, and the cross-node consistency report into one Ed25519 attestation.
+
+The signing key is **not stored in this repository**. Configure a 32-byte Ed25519 seed as 64 hexadecimal characters:
+
+```bash
+export SENTINEL_ED25519_SEED_HEX='<64-hex-character seed>'
+cargo run
+```
+
+When configured:
+
+```text
+GET /api/attestation/snapshot
+```
+
+returns `rchain-sentinel-attestation/v1` containing:
+
+- the complete observation payload;
+- SHA-256 digest of the serialized payload;
+- Ed25519 public key;
+- SHA-256 public-key fingerprint (`key_id`);
+- Ed25519 signature.
+
+The signature is domain-separated with `rchain-sentinel-attestation/v1`.
+
+If `SENTINEL_ED25519_SEED_HEX` is absent, ordinary Sentinel operation continues and the attestation endpoint returns HTTP 503. If the variable is present but malformed, Sentinel fails startup rather than silently running with an unexpected signing identity.
+
+A valid signature proves possession of the corresponding private key. Trust still requires consumers to pin or otherwise authorize the expected public-key fingerprint; a public key supplied by the same response is not by itself an identity policy.
