@@ -1,4 +1,4 @@
-use crate::models::{CrossNodeReport, FinalizedBlockEvidence, NetworkStatus};
+use crate::models::{CrossNodeReport, FinalizedBlockEvidence, GenesisEvidence, NetworkStatus};
 use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,6 +21,7 @@ pub struct SentinelAttestationPayload {
     pub schema: &'static str,
     pub collected_at_unix_ms: u64,
     pub network: NetworkStatus,
+    pub genesis: GenesisEvidence,
     pub finalized_block: FinalizedBlockEvidence,
     pub cross_node: CrossNodeReport,
     pub failure_domains: Vec<FailureDomainDeclaration>,
@@ -167,6 +168,7 @@ impl AttestationSigner {
         &self,
         collected_at_unix_ms: u64,
         network: NetworkStatus,
+        genesis: GenesisEvidence,
         finalized_block: FinalizedBlockEvidence,
         cross_node: CrossNodeReport,
         failure_domains: Vec<FailureDomainDeclaration>,
@@ -175,6 +177,7 @@ impl AttestationSigner {
             schema: SENTINEL_ATTESTATION_SCHEMA,
             collected_at_unix_ms,
             network,
+            genesis,
             finalized_block,
             cross_node,
             failure_domains,
@@ -389,6 +392,17 @@ mod tests {
             .sign_snapshot(
                 1_000,
                 network(),
+                GenesisEvidence {
+                    configured_hash: "genesis-abc".to_string(),
+                    available: true,
+                    raw: Some(serde_json::json!({"blockHash":"genesis-abc","blockNumber":0})),
+                    payload_sha256: Some("sha256:fixture".to_string()),
+                    observed_hash: Some("genesis-abc".to_string()),
+                    observed_height: Some(0),
+                    hash_match: Some(true),
+                    height_zero: Some(true),
+                    error: None,
+                },
                 FinalizedBlockEvidence::unavailable("fixture"),
                 cross_node(),
                 failure_domains(),
