@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RChain Maintainer Brief</title>
+  <style>
+    body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0b0f14;color:#d9e2ec;margin:0;padding:24px}
+    .wrap{max-width:1100px;margin:auto}.top{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.badge{padding:8px 12px;border:1px solid #445;border-radius:8px;font-weight:700}.card{border:1px solid #26313d;border-radius:12px;padding:16px;margin-top:16px;background:#10161d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.k{opacity:.65;font-size:12px}.v{font-size:18px;margin-top:4px;word-break:break-all}.attention{font-size:20px;font-weight:700}.muted{opacity:.7}.mono{white-space:pre-wrap;word-break:break-word;font-size:12px}.pass{border-color:#3d6}.attention-state{border-color:#d66}.incomplete{border-color:#da6}button{background:#17202a;color:#d9e2ec;border:1px solid #34495e;border-radius:8px;padding:8px 12px;cursor:pointer}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>RChain Maintainer Brief</h1><span id="verdict" class="badge">loading</span><button onclick="load()">refresh</button></div>
+  <div class="card"><div class="k">FIRST ATTENTION</div><div id="first" class="attention">loading</div><div class="muted">GET-only observation. No deploy, propose, slash, trust, bond, withdraw, or other chain mutation is issued by this page.</div></div>
+  <div class="card grid">
+    <div><div class="k">NODE</div><div id="node" class="v">-</div></div>
+    <div><div class="k">VERSION</div><div id="version" class="v">-</div></div>
+    <div><div class="k">NETWORK / SHARD</div><div id="network" class="v">-</div></div>
+    <div><div class="k">FINALIZED HEIGHT</div><div id="height" class="v">-</div></div>
+  </div>
+  <div class="card grid">
+    <div><div class="k">FINALIZED HASH</div><div id="hash" class="v">-</div></div>
+    <div><div class="k">CANONICAL CONSISTENCY</div><div id="canonical" class="v">-</div></div>
+    <div><div class="k">BOND STRUCTURE</div><div id="bonds" class="v">-</div></div>
+    <div><div class="k">CROSS-NODE AGREEMENT</div><div id="cross" class="v">-</div></div>
+  </div>
+  <div class="card"><div class="k">EVIDENCE DIGEST / DETAILS</div><div id="details" class="mono">loading</div></div>
+</div>
+<script>
+async function load(){
+  const el=document.getElementById('verdict'); el.textContent='loading'; el.className='badge';
+  try{
+    const r=await fetch('/api/maintainer/brief',{cache:'no-store'}); const d=await r.json();
+    el.textContent=d.verdict; el.className='badge '+(d.verdict==='PASS'?'pass':d.verdict==='ATTENTION'?'attention-state':'incomplete');
+    document.getElementById('first').textContent=d.firstAttention||'none';
+    document.getElementById('node').textContent=d.source?.nodeUrl||'-';
+    document.getElementById('version').textContent=d.source?.version||'-';
+    document.getElementById('network').textContent=[d.source?.networkId,d.source?.shardId].filter(Boolean).join(' / ')||'-';
+    document.getElementById('height').textContent=d.network?.rnode?.last_finalized_block_number ?? d.network?.rnode?.lastFinalizedBlockNumber ?? d.crossNode?.common_finalized_height ?? d.crossNode?.commonFinalizedHeight ?? '-';
+    document.getElementById('hash').textContent=d.finalized?.blockHash||'-';
+    document.getElementById('canonical').textContent=String(d.finalized?.canonicalConsistency ?? 'unknown');
+    document.getElementById('bonds').textContent=`${d.casper?.bond_count ?? d.casper?.bondCount ?? 0} / valid=${d.casper?.bond_structure_valid ?? d.casper?.bondStructureValid ?? 'unknown'}`;
+    document.getElementById('cross').textContent=`${d.crossNode?.agreeing_nodes ?? d.crossNode?.agreeingNodes ?? 0}/${d.crossNode?.reachable_count ?? d.crossNode?.reachableCount ?? 0} agreement=${d.crossNode?.agreement ?? 'unknown'}`;
+    document.getElementById('details').textContent=JSON.stringify({observedAt:d.observedAt, probes:d.probes, finalized:d.finalized, caveats:d.caveats, evidencePacket:d.evidencePacket},null,2);
+  }catch(e){el.textContent='ERROR';el.className='badge attention-state';document.getElementById('first').textContent=String(e)}
+}
+load();
+</script>
+</body>
+</html>
