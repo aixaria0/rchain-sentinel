@@ -342,3 +342,55 @@ Built for evidence-driven verification of decentralized infrastructure.
 ## License
 
 Apache License 2.0
+
+
+## Signed assurance snapshot
+
+The optional `GET /api/attestation/snapshot?nonce=<64-lowercase-hex>` endpoint produces a promotion-grade
+`rchain-sentinel-attestation/v1` snapshot for the Assurance Fabric.
+
+It is deliberately fail-closed and is disabled unless all of the following are configured:
+
+- `RCHAIN_SENTINEL_ED25519_SECRET_HEX`: exactly 32 secret-key bytes encoded as hex.
+- `RCHAIN_GENESIS_HASH`: the configured genesis block hash to challenge through the RNode canonical block endpoint.
+- `RCHAIN_RNODE_URLS`: at least two observer targets.
+- `RCHAIN_FAILURE_DOMAINS_JSON`: one declaration per normalized target URL, with exact coverage and at least two distinct `operator_id` and `failure_domain_id` values.
+
+Example declaration shape:
+
+```json
+[
+  {
+    "node_url": "https://node-a.example",
+    "operator_id": "operator-a",
+    "provider_id": "provider-a",
+    "region": "region-a",
+    "failure_domain_id": "fd-a"
+  },
+  {
+    "node_url": "https://node-b.example",
+    "operator_id": "operator-b",
+    "provider_id": "provider-b",
+    "region": "region-b",
+    "failure_domain_id": "fd-b"
+  }
+]
+```
+
+The signed payload binds, in one canonical snapshot:
+
+- the verifier-supplied 32-byte challenge nonce, preventing an older valid snapshot from satisfying a different live verification request;
+- network status;
+- the configured genesis hash and the block returned for that hash;
+- finalized-block evidence;
+- cross-node observations;
+- the declared operator/provider/region/failure-domain metadata.
+
+The Ed25519 key fingerprint is published as `sha256:<hex>`. The corresponding
+private key is read only from the environment and is never written by Sentinel.
+
+The nonce must be exactly 64 lowercase hexadecimal characters. Sentinel echoes it only inside the signed payload; malformed or missing challenges are rejected before a promotion-grade snapshot is produced.
+
+Failure-domain metadata is a signed declaration, not independent proof that two
+operators or providers are genuinely independent. Cross-node agreement also
+remains distinct from stake-weighted Casper finality.
