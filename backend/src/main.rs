@@ -7,6 +7,7 @@ mod cross_node;
 mod demo;
 mod invariants;
 mod models;
+mod maintainer;
 mod provenance;
 mod rnode;
 mod semantic_diff;
@@ -22,6 +23,7 @@ use cross_node::CrossNodeVerificationEngine;
 use demo::{killer_demo, KillerDemo};
 use invariants::{invariant_trace, InvariantTrace};
 use models::{CasperEvidenceReport, CrossNodeReport, ExplorerBlockReport, FinalizedBlockEvidence, HealthResponse, NetworkStatus, VerificationReport};
+use maintainer::{MaintainerBrief, MaintainerCollector, MaintainerEvidencePacket};
 use provenance::{diff_events, proof_carrying_execution, qlf_certificate_linkage, replay_execution, synthetic_event, EvidenceEnvelope, ProofCarryingExecution, QlfCertificateLinkage, RealityDiff, ReplayReport};
 use rnode::RNodeClient;
 use semantic_diff::{semantic_diff, SemanticRealityDiff};
@@ -33,6 +35,7 @@ use tower_http::cors::CorsLayer;
 struct AppState { rnode: Arc<RNodeClient>, rnode_urls: Arc<Vec<String>> }
 async fn explorer() -> Html<&'static str> { Html(include_str!("../console.html")) }
 async fn reality_explorer() -> Html<&'static str> { Html(include_str!("../reality.html")) }
+async fn maintainer_explorer() -> Html<&'static str> { Html(include_str!("../maintainer.html")) }
 async fn health() -> Json<HealthResponse> { Json(HealthResponse { status: "ok", service: "rchain-sentinel", version: "0.1.0" }) }
 async fn network_status(State(state): State<AppState>) -> Json<NetworkStatus> { Json(state.rnode.status().await) }
 async fn finalized_block_evidence(State(state): State<AppState>) -> Json<FinalizedBlockEvidence> { Json(match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }) }
@@ -40,6 +43,8 @@ async fn verify_network(State(state): State<AppState>) -> Json<VerificationRepor
 async fn verify_block(State(state): State<AppState>) -> Json<VerificationReport> { let network_status = state.rnode.status().await; let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(BlockVerificationEngine::verify(&evidence, &network_status.node_url)) }
 async fn verify_casper(State(state): State<AppState>) -> Json<CasperEvidenceReport> { let evidence = match state.rnode.fetch_last_finalized_block_evidence().await { Ok(evidence) => evidence, Err(error) => FinalizedBlockEvidence::unavailable(error) }; Json(CasperEvidenceEngine::analyze(&evidence)) }
 async fn verify_cross_node(State(state): State<AppState>) -> Json<CrossNodeReport> { Json(CrossNodeVerificationEngine::verify(&state.rnode_urls).await) }
+async fn maintainer_brief(State(state): State<AppState>) -> Json<MaintainerBrief> { Json(MaintainerCollector::collect(&state.rnode, &state.rnode_urls).await) }
+async fn maintainer_packet(State(state): State<AppState>) -> Json<MaintainerEvidencePacket> { Json(MaintainerCollector::collect(&state.rnode, &state.rnode_urls).await.evidence_packet) }
 async fn reality_event(Path(event_id): Path<String>) -> Json<EvidenceEnvelope> { Json(synthetic_event(&event_id)) }
 async fn reality_diff(Path((left, right)): Path<(String, String)>) -> Json<RealityDiff> { Json(diff_events(&left, &right)) }
 async fn reality_semantic_diff(Path((left, right)): Path<(String, String)>) -> Json<SemanticRealityDiff> { Json(semantic_diff(&left, &right)) }
@@ -82,8 +87,8 @@ async fn main() {
     println!("RChain Sentinel"); println!("RNode target: {}", rnode_url); println!("Cross-node targets: {}", rnode_urls.len());
     let state = AppState { rnode: Arc::new(RNodeClient::new(rnode_url)), rnode_urls: Arc::new(rnode_urls) };
     let app = Router::new()
-        .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/health", get(health))
-        .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence))
+        .route("/", get(explorer)).route("/reality", get(reality_explorer)).route("/maintainer", get(maintainer_explorer)).route("/health", get(health))
+        .route("/api/network/status", get(network_status)).route("/api/evidence/last-finalized-block", get(finalized_block_evidence)).route("/api/maintainer/brief", get(maintainer_brief)).route("/api/maintainer/packet", get(maintainer_packet))
         .route("/api/verify", get(verify_network)).route("/api/verify/block", get(verify_block)).route("/api/verify/casper", get(verify_casper)).route("/api/verify/cross-node", get(verify_cross_node))
         .route("/api/reality/event/{event_id}", get(reality_event)).route("/api/reality/diff/{left}/{right}", get(reality_diff)).route("/api/reality/diff-semantic/{left}/{right}", get(reality_semantic_diff)).route("/api/reality/proof/{event_id}", get(reality_proof)).route("/api/reality/replay/{event_id}", get(reality_replay)).route("/api/reality/counterfactual/{event_id}/{scenario}", get(reality_counterfactual)).route("/api/reality/challenge/{event_id}/{attack}", get(reality_challenge)).route("/api/reality/qlf/{event_id}", get(reality_qlf)).route("/api/reality/adapters", get(reality_adapters)).route("/api/reality/invariants/{event_id}", get(reality_invariants)).route("/api/reality/demo/{event_id}", get(reality_demo))
         .route("/api/explorer/block", get(explorer_block)).route("/api/block/{hash}", get(get_block)).route("/api/is-finalized/{hash}", get(is_finalized))
