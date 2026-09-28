@@ -342,3 +342,7 @@ Built for evidence-driven verification of decentralized infrastructure.
 ## License
 
 Apache License 2.0
+
+## Assurance fabric role
+
+Sentinel is the **observation/transport verification boundary** in the v1 assurance fabric. `POST /api/assurance/repair/observe` accepts `causal-assurance-repair-propagation/v1`, validates schema/provenance/digest syntax and the native-replay flag, and emits a deterministic observation digest. Acceptance is evidence transport only; it is not an independent Casper finality or protocol-safety proof.
