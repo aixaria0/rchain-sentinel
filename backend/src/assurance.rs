@@ -14,8 +14,8 @@ fn finalized(value: &Value) -> bool { value.as_bool() == Some(true) || ["finaliz
 fn protocol_matches(a: &Value, b: &Value) -> bool { ["blockHash", "blockNumber", "shardId", "sender", "seqNum", "preStateHash", "postStateHash", "justifications", "bonds", "sigAlgorithm", "sig"].iter().all(|k| !info(a)[*k].is_null() && info(a)[*k] == info(b)[*k]) }
 fn bool_result(v: &Value) -> Option<bool> {
     let first = v.as_array()?.first()?;
-    let items = first["ExprTuple"]["ps"].as_array()?;
-    let result = items.first()?.get("ExprBool")?;
+    let tuple = first["ExprTuple"]["ps"].as_array().and_then(|items| items.first()).and_then(|item| item.get("ExprBool"));
+    let result = tuple.or_else(|| first.get("ExprBool"))?;
     result.as_bool().or_else(|| result["data"].as_bool())
 }
 fn transfer_recipient(term: &str) -> Option<String> {
@@ -130,6 +130,7 @@ mod tests {
     fn fixture() -> Vec<Value> { let p:Value=serde_json::from_str(include_str!("../tests/fixtures/assurance-pass.json")).unwrap();p["observers"].as_array().unwrap().clone() }
     fn replace_raw(raw:&mut Value, value:Value) { let body=serde_json::to_string(&value).unwrap();raw["digest"]=json!(format!("{:x}",Sha256::digest(body.as_bytes())));raw["body"]=json!(body); }
     const NOW:u64=1792080001000;
+    #[test] fn direct_boolean_results_are_preserved() { assert_eq!(bool_result(&json!([{"ExprBool":{"data":true}}])),Some(true)); assert_eq!(bool_result(&json!([{"ExprBool":false}])),Some(false)); assert_eq!(bool_result(&json!([])),None); }
     #[test] fn same_height_different_hash_is_conflict() {let mut o=fixture();o[1]["finalized_hash"]=json!("other");assert_eq!(agreement(&o,NOW),"CONFLICT");}
     #[test] fn valid_parent_path_proves_lag() {let mut o=fixture();let low=o[0]["finalized_hash"].clone();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);b["blockInfo"]["parents"]=json!([low]);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"PROVEN_LAG");}
     #[test] fn unresolved_height_is_skew() {let mut o=fixture();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"HEIGHT_SKEW");}
