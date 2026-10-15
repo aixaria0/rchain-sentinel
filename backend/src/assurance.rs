@@ -11,7 +11,14 @@ fn info(value: &Value) -> &Value { value.get("blockInfo").unwrap_or(value) }
 fn hash(value: &Value) -> Option<&str> { info(value)["blockHash"].as_str() }
 fn height(value: &Value) -> Option<u64> { info(value)["blockNumber"].as_u64() }
 fn finalized(value: &Value) -> bool { value.as_bool() == Some(true) || ["finalized", "isFinalized", "is_finalized", "value"].iter().any(|k| value[*k].as_bool() == Some(true)) }
-fn protocol_matches(a: &Value, b: &Value) -> bool { ["blockHash", "blockNumber", "shardId", "sender", "seqNum", "preStateHash", "postStateHash", "justifications", "bonds", "sigAlgorithm", "sig"].iter().all(|k| !info(a)[*k].is_null() && info(a)[*k] == info(b)[*k]) }
+fn protocol_matches(a: &Value, b: &Value) -> Option<bool> {
+    let mut missing = false;
+    for k in ["blockHash", "blockNumber", "shardId", "sender", "seqNum", "preStateHash", "postStateHash", "justifications", "bonds", "sigAlgorithm", "sig"] {
+        if info(a)[k].is_null() || info(b)[k].is_null() { missing = true; continue; }
+        if info(a)[k] != info(b)[k] { return Some(false); }
+    }
+    if missing {None} else {Some(true)}
+}
 fn bool_result(v: &Value) -> Option<bool> {
     let first = v.as_array()?.first()?;
     let tuple = first["ExprTuple"]["ps"].as_array().and_then(|items| items.first()).and_then(|item| item.get("ExprBool"));
@@ -45,7 +52,9 @@ async fn observer(deploy: &str, source: &str, domain: Option<&str>) -> Value {
         let canonical = body(&evidence["block"]);
         let deploy_info = canonical["deploys"].as_array().and_then(|ds| ds.iter().find(|d| d["sig"] == deploy));
         if let Some(recipient) = deploy_info.and_then(|d| d["term"].as_str()).and_then(transfer_recipient) {
-            evidence["balance"] = client.assurance_raw("/api/explore-deploy", Some(&balance_term(&recipient))).await.ok().unwrap_or(Value::Null);
+            if let Some(tip_hash) = hash(&body(&evidence["finalized"])) {
+                evidence["balance"] = client.assurance_raw(&format!("/api/explore-deploy?blockHash={}", urlencoding::encode(tip_hash)), Some(&balance_term(&recipient))).await.ok().unwrap_or(Value::Null);
+            }
         }
     }
     let finalized_block = body(&evidence["finalized"]);
@@ -61,14 +70,16 @@ fn canonical_contradiction(o: &Value) -> bool {
     if e["ancestry"].as_array().is_some_and(|a| a.iter().any(|r| !evidence_ok(r))) { return true; }
     let tip=body(&e["finalized"]);
     if !e["finalized"].is_null() && (json!(hash(&tip)) != o["finalized_hash"] || json!(height(&tip)) != o["finalized_height"]) { return true; }
+    let balance=body(&e["balance"]);
+    if hash(&tip).is_some() && hash(&balance["block"]) == hash(&tip) && protocol_matches(&tip, &balance["block"]) == Some(true) == Some(false) { return true; }
     let d = body(&e["deploy"]);
     let b = d["ProcessedWithSuccess"].get("block").or_else(|| d["ProcessedWithError"].get("block"));
-    (!e["finalized"].is_null() && !e["finalized_block"].is_null() && !protocol_matches(&body(&e["finalized"]), &body(&e["finalized_block"]))) || b.is_some_and(|b| !e["block"].is_null() && !protocol_matches(b, &body(&e["block"])))
+    (!e["finalized"].is_null() && !e["finalized_block"].is_null() && protocol_matches(&body(&e["finalized"]), &body(&e["finalized_block"])) == Some(false)) || b.is_some_and(|b| !e["block"].is_null() && protocol_matches(b, &body(&e["block"])) == Some(false))
 }
 fn has_readback(o: &Value, deploy_id: &str) -> bool {
     let e = &o["evidence"]; let tip = body(&e["finalized"]); let balance = body(&e["balance"]); let deploy = body(&e["deploy"]);
     let canonical = body(&e["block"]); let included = canonical["deploys"].as_array().is_some_and(|ds| ds.iter().any(|d| d["sig"] == deploy_id && d["errored"] == false));
-    included && !canonical_contradiction(o) && !e["finalized_block"].is_null() && bool_result(&deploy["ProcessedWithSuccess"]["deployResult"]) == Some(true) && finalized(&body(&e["is_finalized"])) && balance_value(&balance).is_some() && hash(&tip).is_some() && hash(&tip) == hash(&balance["block"]) && height(&tip) == height(&balance["block"])
+    included && !canonical_contradiction(o) && !e["finalized_block"].is_null() && bool_result(&deploy["ProcessedWithSuccess"]["deployResult"]) == Some(true) && finalized(&body(&e["is_finalized"])) && balance_value(&balance).is_some() && hash(&tip).is_some() && height(&tip).is_some() && hash(&tip) == hash(&balance["block"]) && height(&tip) == height(&balance["block"]) && protocol_matches(&tip, &balance["block"]) == Some(true)
 }
 fn ancestor(high: &Value, target: &str) -> bool {
     let e = &high["evidence"]; let mut pending = vec![body(&e["finalized_block"])]; let mut seen = std::collections::HashSet::new();
@@ -95,7 +106,7 @@ pub fn package(deploy: &str, mut observers: Vec<Value>, generated_at: u64, revis
     let processed = &d["ProcessedWithSuccess"]; let block = processed.get("block").or_else(|| d["ProcessedWithError"].get("block"));
     let raw_block = body(&first["evidence"]["block"]);
     let deploy_info = raw_block["deploys"].as_array().and_then(|a| a.iter().find(|d| d["sig"] == deploy));
-    let included = block.is_some() && deploy_info.is_some();
+    let included = block.is_some_and(|b| hash(b).is_some() && height(b).is_some()) && deploy_info.is_some();
     let execution = if !d["ProcessedWithError"].is_null() || bool_result(&processed["deployResult"]) == Some(false) {"FAILED"} else if included && bool_result(&processed["deployResult"]) == Some(true) {"OBSERVED"} else {"UNKNOWN"};
     let mut stage = json!({"status": if included {"OBSERVED"} else {"UNKNOWN"}});
     if included { let b=block.unwrap(); stage["block_hash"]=json!(hash(b)); stage["block_height"]=json!(height(b)); stage["observed_at"]=first["evidence"]["deploy"]["observed_at"].clone(); }
