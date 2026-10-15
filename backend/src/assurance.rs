@@ -142,6 +142,20 @@ mod tests {
     fn replace_raw(raw:&mut Value, value:Value) { let body=serde_json::to_string(&value).unwrap();raw["digest"]=json!(format!("{:x}",Sha256::digest(body.as_bytes())));raw["body"]=json!(body); }
     const NOW:u64=1792080001000;
     #[test] fn direct_boolean_results_are_preserved() { assert_eq!(bool_result(&json!([{"ExprBool":{"data":true}}])),Some(true)); assert_eq!(bool_result(&json!([{"ExprBool":false}])),Some(false)); assert_eq!(bool_result(&json!([])),None); }
+    #[test]
+    fn native_nil_reply_serialized_as_empty_is_not_execution_proof() {
+        let mut observations = fixture();
+        for observer in &mut observations {
+            let mut deploy = body(&observer["evidence"]["deploy"]);
+            deploy["ProcessedWithSuccess"]["deployResult"] = json!([]);
+            replace_raw(&mut observer["evidence"]["deploy"], deploy);
+        }
+        let deploy_id = body(&observations[0]["evidence"]["block"])["deploys"][0]["sig"].as_str().unwrap().to_string();
+        let p = package(&deploy_id, observations, NOW, "test");
+        assert_eq!(p["inclusion"]["status"], "OBSERVED");
+        assert_eq!(p["execution"]["status"], "UNKNOWN");
+        assert_eq!(p["finalized_state"]["status"], "UNAVAILABLE");
+    }
     #[test] fn same_height_different_hash_is_conflict() {let mut o=fixture();o[1]["finalized_hash"]=json!("other");assert_eq!(agreement(&o,NOW),"CONFLICT");}
     #[test] fn valid_parent_path_proves_lag() {let mut o=fixture();let low=o[0]["finalized_hash"].clone();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);b["blockInfo"]["parents"]=json!([low]);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"PROVEN_LAG");}
     #[test] fn unresolved_height_is_skew() {let mut o=fixture();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"HEIGHT_SKEW");}

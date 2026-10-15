@@ -1,0 +1,20 @@
+[
+  {
+    "source": "https://testnet.rhobot.net",
+    "method": "GET",
+    "path": "/api/status",
+    "observed_at": 1792101138848,
+    "http_status": 200,
+    "body": "{\"version\":{\"api\":\"1\",\"node\":\"RChain Node 0.1.0 (71c6a513d9785e45c3fbb919125c3314c2d8bf6e)\"},\"address\":\"6b70152e0dfe887101428710a5c5a14c9933a3d6\",\"networkId\":\"testnet\",\"shardId\":\"/root\",\"peers\":3,\"nodes\":3,\"minPhloPrice\":1,\"latestBlockNumber\":775,\"autopropose\":false,\"proposeOnDeploy\":true,\"manualPropose\":false,\"adminHttp\":false,\"devMode\":true,\"consecutiveSelfValidationFailures\":0,\"autoproposeTimerHalted\":false,\"staleSnapshotSelfEquivocations\":0,\"finalityStall\":null,\"finalityStalled\":false,\"finalityStallEpisodes\":0,\"nonQuietMergeReports\":112,\"sync\":null,\"poisonRecoveries\":0,\"unrestorableRecords\":0,\"unrestorableBlock\":null,\"tasksPanicked\":0,\"tasksExited\":0,\"undeliveredSends\":120}",
+    "sha256": "c55200990f655d089b7b27f695d181b95ef925d3f285e6856a2746f94aadcad9"
+  },
+  {
+    "source": "https://testnet.rhobot.net",
+    "method": "GET",
+    "path": "/api/v1/deploy-status/304402203a7a87b2fe2fdb23d583f7f98871979636bd171cf4cb1238d58e0c26ba4f2ae50220592d5a704d5c3bab32b2ed4231b7d8a42ca0efcae31769f2468ebd0cf2023385",
+    "observed_at": 1792101140483,
+    "http_status": 200,
+    "body": "{\"ProcessedWithSuccess\":{\"deployResult\":[],\"block\":{\"version\":1,\"shardId\":\"/root\",\"blockHash\":\"d968c7f8b8ffeffef0043a54f9fa10c7f3f75007fe3d54ac7f3f722f096c6a57\",\"blockNumber\":765,\"sender\":\"0410b8c59d04df768160eb97f8773db56a9e861f3b8c53ba4ef80a1d4f71bb2c6c9cc977b3c93d5cc3dbe9465fa7f501014be4238a5a74b2d2256f95321a0c3c73\",\"seqNum\":765,\"preStateHash\":\"b15f29646f5d512648771e821708e447dbdde9502492854856e46867b2e28b7c\",\"postStateHash\":\"f920930f102aa955c9ae8e2e8574b6a683467b4e6d88fe56f251e73197220bc7\",\"justifications\":[\"3862996de4de5aea4afb9a79e61637f2d6b3f6db199decc1b65c5e8f69cc8c40\",\"3caf0dbaa81e04ef5ad698cfda35950bc3c877c70890bffcb8d8b1dc08fc67ce\",\"5df0cc17991002018b6cf55952e4f40945c98c78f05ef98050092d5c2d30129e\",\"ef78e8f56145543bd37fd0bb479d63df9db6efc809a03233cf7ed3c7c003d774\"],\"bonds\":[{\"validator\":\"0410b8c59d04df768160eb97f8773db56a9e861f3b8c53ba4ef80a1d4f71bb2c6c9cc977b3c93d5cc3dbe9465fa7f501014be4238a5a74b2d2256f95321a0c3c73\",\"stake\":250},{\"validator\":\"041ed2a25819ada35a65dbcce3b42c6a03a414ce6c13cd908aa169876294bf12100698876b4ea5dca09afe23ad7ce27f6bbe7ad0ec4330ca2759645dc4c8b31266\",\"stake\":250},{\"validator\":\"04d7707c7d31abc15f961da732f759311a24d5ff7431af2a25f75abd82a188be5e367ccce681e444cc8b671e27ca544d2e4a824d21363667e76c1d4c937ca25b92\",\"stake\":250},{\"validator\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"stake\":250}],\"sigAlgorithm\":\"secp256k1\",\"sig\":\"304402200b2138a0de1a3edb38bf13c24cac8a10c4d0367a9045bc7a74f4ac545e65437702203373458810c56d271617fc8986e56ac12cc5b2073d4f3e4d5c7c4ad47e3f1db4\",\"blockSize\":\"1871\",\"deployCount\":1,\"rejectedDeploys\":[],\"timestamp\":1792094878079}}}",
+    "sha256": "a549aade03ab38c1e525abcba6bf05d62c9565c2cf9dfad153a27d006fdcbab4"
+  }
+]

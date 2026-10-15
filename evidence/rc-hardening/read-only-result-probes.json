@@ -1,0 +1,32 @@
+[
+  {
+    "name": "nil",
+    "method": "POST",
+    "path": "/api/explore-deploy",
+    "request": "new return in { return!(Nil) }",
+    "observed_at": 1792100901995,
+    "http_status": 200,
+    "body": "{\"expr\":[],\"block\":{\"version\":1,\"shardId\":\"/root\",\"blockHash\":\"8f3fb55fe7341f4cb72dbc8e88192f20a6517e59601b438a241e32ee3f4d7ffb\",\"blockNumber\":771,\"sender\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"seqNum\":770,\"preStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"postStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"justifications\":[\"3b8529f0abf3c3e1fccbfbd34282541b0f245cedc53d58bc3f8bfdbd6702c17f\",\"6075b0cfe4a6df967c85aa315fc9d5a0864693fc93ea0b370e90d735cecee81f\",\"83252c95cd8616eff92ce90b3f6dde40a349807993e7bb55f0352993341dcfba\",\"cb93df03a10b3b6092bb7811a1a987b5b1badadb5ea91b9af791f7a236f2d78e\"],\"bonds\":[{\"validator\":\"0410b8c59d04df768160eb97f8773db56a9e861f3b8c53ba4ef80a1d4f71bb2c6c9cc977b3c93d5cc3dbe9465fa7f501014be4238a5a74b2d2256f95321a0c3c73\",\"stake\":250},{\"validator\":\"041ed2a25819ada35a65dbcce3b42c6a03a414ce6c13cd908aa169876294bf12100698876b4ea5dca09afe23ad7ce27f6bbe7ad0ec4330ca2759645dc4c8b31266\",\"stake\":250},{\"validator\":\"04d7707c7d31abc15f961da732f759311a24d5ff7431af2a25f75abd82a188be5e367ccce681e444cc8b671e27ca544d2e4a824d21363667e76c1d4c937ca25b92\",\"stake\":250},{\"validator\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"stake\":250}],\"sigAlgorithm\":\"secp256k1\",\"sig\":\"304402204509810dd590782730d1e6f5c48ed43b4a277810809f2a9927da52e5d3d92a0b022000ae466b1162da29e4653be9c424645be32acfb8228974a536a92d260e9c0716\",\"blockSize\":\"702\",\"deployCount\":0,\"rejectedDeploys\":[],\"timestamp\":1792094888909},\"replySource\":\"firstPrivateName\"}",
+    "sha256": "cbc7a143f82087cc29cdddadc68514150f6a7669f8a28b5fb95eb194366bab85"
+  },
+  {
+    "name": "boolean",
+    "method": "POST",
+    "path": "/api/explore-deploy",
+    "request": "new return in { return!(true) }",
+    "observed_at": 1792100903451,
+    "http_status": 200,
+    "body": "{\"expr\":[{\"ExprBool\":{\"data\":true}}],\"block\":{\"version\":1,\"shardId\":\"/root\",\"blockHash\":\"8f3fb55fe7341f4cb72dbc8e88192f20a6517e59601b438a241e32ee3f4d7ffb\",\"blockNumber\":771,\"sender\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"seqNum\":770,\"preStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"postStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"justifications\":[\"3b8529f0abf3c3e1fccbfbd34282541b0f245cedc53d58bc3f8bfdbd6702c17f\",\"6075b0cfe4a6df967c85aa315fc9d5a0864693fc93ea0b370e90d735cecee81f\",\"83252c95cd8616eff92ce90b3f6dde40a349807993e7bb55f0352993341dcfba\",\"cb93df03a10b3b6092bb7811a1a987b5b1badadb5ea91b9af791f7a236f2d78e\"],\"bonds\":[{\"validator\":\"0410b8c59d04df768160eb97f8773db56a9e861f3b8c53ba4ef80a1d4f71bb2c6c9cc977b3c93d5cc3dbe9465fa7f501014be4238a5a74b2d2256f95321a0c3c73\",\"stake\":250},{\"validator\":\"041ed2a25819ada35a65dbcce3b42c6a03a414ce6c13cd908aa169876294bf12100698876b4ea5dca09afe23ad7ce27f6bbe7ad0ec4330ca2759645dc4c8b31266\",\"stake\":250},{\"validator\":\"04d7707c7d31abc15f961da732f759311a24d5ff7431af2a25f75abd82a188be5e367ccce681e444cc8b671e27ca544d2e4a824d21363667e76c1d4c937ca25b92\",\"stake\":250},{\"validator\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"stake\":250}],\"sigAlgorithm\":\"secp256k1\",\"sig\":\"304402204509810dd590782730d1e6f5c48ed43b4a277810809f2a9927da52e5d3d92a0b022000ae466b1162da29e4653be9c424645be32acfb8228974a536a92d260e9c0716\",\"blockSize\":\"702\",\"deployCount\":0,\"rejectedDeploys\":[],\"timestamp\":1792094888909},\"replySource\":\"firstPrivateName\"}",
+    "sha256": "482105fd6a1256f39deca8404160e45ad6b7ddb413a403422ce01d7142785bef"
+  },
+  {
+    "name": "forward_nil",
+    "method": "POST",
+    "path": "/api/explore-deploy",
+    "request": "new return, resultCh in { resultCh!(Nil) | for (@result <- resultCh) { return!(result) } }",
+    "observed_at": 1792100904963,
+    "http_status": 200,
+    "body": "{\"expr\":[],\"block\":{\"version\":1,\"shardId\":\"/root\",\"blockHash\":\"8f3fb55fe7341f4cb72dbc8e88192f20a6517e59601b438a241e32ee3f4d7ffb\",\"blockNumber\":771,\"sender\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"seqNum\":770,\"preStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"postStateHash\":\"228ad9ebb252de8f840b34e50848313d4d9d5297fbd3cf53483c4507d4ebd131\",\"justifications\":[\"3b8529f0abf3c3e1fccbfbd34282541b0f245cedc53d58bc3f8bfdbd6702c17f\",\"6075b0cfe4a6df967c85aa315fc9d5a0864693fc93ea0b370e90d735cecee81f\",\"83252c95cd8616eff92ce90b3f6dde40a349807993e7bb55f0352993341dcfba\",\"cb93df03a10b3b6092bb7811a1a987b5b1badadb5ea91b9af791f7a236f2d78e\"],\"bonds\":[{\"validator\":\"0410b8c59d04df768160eb97f8773db56a9e861f3b8c53ba4ef80a1d4f71bb2c6c9cc977b3c93d5cc3dbe9465fa7f501014be4238a5a74b2d2256f95321a0c3c73\",\"stake\":250},{\"validator\":\"041ed2a25819ada35a65dbcce3b42c6a03a414ce6c13cd908aa169876294bf12100698876b4ea5dca09afe23ad7ce27f6bbe7ad0ec4330ca2759645dc4c8b31266\",\"stake\":250},{\"validator\":\"04d7707c7d31abc15f961da732f759311a24d5ff7431af2a25f75abd82a188be5e367ccce681e444cc8b671e27ca544d2e4a824d21363667e76c1d4c937ca25b92\",\"stake\":250},{\"validator\":\"04dce59b572da605b9eaa554deca8d364ef541a36ff4386d7ba49087d86866fd3c2d14db6b237aeee46cf732e8880420fe5af5734f01e8a715fc7f7c8da08b045c\",\"stake\":250}],\"sigAlgorithm\":\"secp256k1\",\"sig\":\"304402204509810dd590782730d1e6f5c48ed43b4a277810809f2a9927da52e5d3d92a0b022000ae466b1162da29e4653be9c424645be32acfb8228974a536a92d260e9c0716\",\"blockSize\":\"702\",\"deployCount\":0,\"rejectedDeploys\":[],\"timestamp\":1792094888909},\"replySource\":\"firstPrivateName\"}",
+    "sha256": "cbc7a143f82087cc29cdddadc68514150f6a7669f8a28b5fb95eb194366bab85"
+  }
+]

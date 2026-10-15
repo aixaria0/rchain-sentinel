@@ -1,0 +1,72 @@
+{
+  "classification": "UPSTREAM/API LIMITATION",
+  "basis": "Exact source at the live node-reported build revision, corroborated by read-only Nil/boolean response probes; not an independently attested binary build.",
+  "sources": [
+    {
+      "repository": "rchain-community/rchain-rust",
+      "node_reported_revision": "71c6a513d9785e45c3fbb919125c3314c2d8bf6e",
+      "path": "rholang/src/system_processes.rs",
+      "blob_sha": "a7a4775be4f63a1a503fb27c64d6066420cf6451",
+      "url": "https://github.com/rchain-community/rchain-rust/blob/71c6a513d9785e45c3fbb919125c3314c2d8bf6e/rholang/src/system_processes.rs",
+      "excerpts": [
+        {
+          "start_line": 2257,
+          "end_line": 2264,
+          "source": "                    \"transfer\" => {\n                        let [deployer_id, to, amount, ret] = rest else {\n                            return Err(illegal_arg(\n                                \"transfer expects deployerId, to, amount and return channel\",\n                            ));\n                        };\n                        // Capability, not data: the `from` account is derived from the caller's\n                        // unforgeable deployerId, so a deploy can only spend its own vault."
+        },
+        {
+          "start_line": 2281,
+          "end_line": 2290,
+          "source": "                        match native\n                            .transfer_vault(&from, to, amount)\n                            .await\n                            .map_err(|e| illegal_arg(&e))?\n                        {\n                            Ok(()) => cc.produce(&rand, &[RhoNil::apply()], ret, path).await,\n                            // The classic arm reports a refusal as a deploy error rather than as\n                            // `(false, reason)`: that is its existing contract, and changing a reply\n                            // shape is not what this change is for.\n                            Err(reason) => Err(illegal_arg(&reason)),"
+        }
+      ]
+    },
+    {
+      "repository": "rchain-community/rchain-rust",
+      "node_reported_revision": "71c6a513d9785e45c3fbb919125c3314c2d8bf6e",
+      "path": "casper/src/api/block_api_impl.rs",
+      "blob_sha": "d50e1b450b827b1a184ab218ee9c5d8f576f0c13",
+      "url": "https://github.com/rchain-community/rchain-rust/blob/71c6a513d9785e45c3fbb919125c3314c2d8bf6e/casper/src/api/block_api_impl.rs",
+      "excerpts": [
+        {
+          "start_line": 233,
+          "end_line": 249,
+          "source": "    async fn get_data_at_par_raw(\n        &self,\n        par: &Par,\n        block_hash: &BlockHash,\n        use_pre_state_hash: bool,\n    ) -> Result<(Vec<Par>, LightBlockInfo), String> {\n        let block = self.get_block_unsafe(block_hash).await?;\n        let sorted_par = sort_par_term(par);\n        let state_hash = if use_pre_state_hash {\n            block.pre_state_hash\n        } else {\n            block.post_state_hash\n        };\n        let data = self.runtime.get_data(&state_hash, &sorted_par).await?;\n        let lbi = get_light_block_info(&block);\n        Ok((data, lbi))\n    }"
+        },
+        {
+          "start_line": 452,
+          "end_line": 461,
+          "source": "            if !deploy.is_failed {\n                let deploy_id_ch = RhoDeployId::apply(deploy_id.clone());\n                let (par, light_block) = self\n                    .get_data_at_par_raw(&deploy_id_ch, &block_hash, false)\n                    .await?;\n                Ok(DeployExecStatus::ProcessedWithSuccess {\n                    deploy_result: par,\n                    block: light_block,\n                })\n            } else {"
+        }
+      ]
+    },
+    {
+      "repository": "rchain-community/rchain-rust",
+      "node_reported_revision": "71c6a513d9785e45c3fbb919125c3314c2d8bf6e",
+      "path": "node/src/api/conversion.rs",
+      "blob_sha": "b6f981060eae25b0283165e33b1f4e8f8ab3b665",
+      "url": "https://github.com/rchain-community/rchain-rust/blob/71c6a513d9785e45c3fbb919125c3314c2d8bf6e/node/src/api/conversion.rs",
+      "excerpts": [
+        {
+          "start_line": 113,
+          "end_line": 125,
+          "source": "/// Map a casper `DeployExecStatus` to the API `DeployExecStatus` (port of `toDeployExecStatus`).\npub fn to_deploy_exec_status(status: &CasperDeployExecStatus) -> Option<ApiDeployExecStatus> {\n    match status {\n        CasperDeployExecStatus::ProcessedWithSuccess {\n            deploy_result,\n            block,\n        } => {\n            let result: Vec<RhoExpr> = deploy_result.iter().filter_map(expr_from_par).collect();\n            Some(ApiDeployExecStatus::ProcessedWithSuccess {\n                deploy_result: result,\n                block: block.clone(),\n            })\n        }"
+        }
+      ]
+    },
+    {
+      "repository": "rchain-community/rchain-rust",
+      "node_reported_revision": "71c6a513d9785e45c3fbb919125c3314c2d8bf6e",
+      "path": "node/src/api/rho_expr.rs",
+      "blob_sha": "adafbd208aee795eb867ac8b2b6307bb4574cdd5",
+      "url": "https://github.com/rchain-community/rchain-rust/blob/71c6a513d9785e45c3fbb919125c3314c2d8bf6e/node/src/api/rho_expr.rs",
+      "excerpts": [
+        {
+          "start_line": 193,
+          "end_line": 216,
+          "source": "pub fn expr_from_par(par: &Par) -> Option<RhoExpr> {\n    let mut exprs = Vec::new();\n    for e in &par.exprs {\n        if let Some(r) = expr_from_expr(e) {\n            exprs.push(r);\n        }\n    }\n    for u in &par.unforgeables {\n        if let Some(r) = unforg_from_proto(u) {\n            exprs.push(r);\n        }\n    }\n    for b in &par.bundles {\n        if let Some(r) = expr_from_bundle(b) {\n            exprs.push(r);\n        }\n    }\n\n    // Implements the semantic of Par with Unit: P | Nil ==> P.\n    match exprs.len() {\n        1 => exprs.into_iter().next(),\n        0 => None,\n        _ => Some(RhoExpr::ExprPar(exprs)),\n    }"
+        }
+      ]
+    }
+  ]
+}
