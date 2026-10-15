@@ -59,13 +59,16 @@ fn canonical_contradiction(o: &Value) -> bool {
     let e = &o["evidence"];
     for key in ["status", "deploy", "block", "finalized", "finalized_block", "is_finalized", "balance"] { if !e[key].is_null() && !evidence_ok(&e[key]) { return true; } }
     if e["ancestry"].as_array().is_some_and(|a| a.iter().any(|r| !evidence_ok(r))) { return true; }
+    let tip=body(&e["finalized"]);
+    if !e["finalized"].is_null() && (json!(hash(&tip)) != o["finalized_hash"] || json!(height(&tip)) != o["finalized_height"]) { return true; }
     let d = body(&e["deploy"]);
     let b = d["ProcessedWithSuccess"].get("block").or_else(|| d["ProcessedWithError"].get("block"));
     (!e["finalized"].is_null() && !e["finalized_block"].is_null() && !protocol_matches(&body(&e["finalized"]), &body(&e["finalized_block"]))) || b.is_some_and(|b| !e["block"].is_null() && !protocol_matches(b, &body(&e["block"])))
 }
-fn has_readback(o: &Value) -> bool {
+fn has_readback(o: &Value, deploy_id: &str) -> bool {
     let e = &o["evidence"]; let tip = body(&e["finalized"]); let balance = body(&e["balance"]); let deploy = body(&e["deploy"]);
-    !canonical_contradiction(o) && !e["finalized_block"].is_null() && bool_result(&deploy["ProcessedWithSuccess"]["deployResult"]) == Some(true) && finalized(&body(&e["is_finalized"])) && balance_value(&balance).is_some() && hash(&tip).is_some() && hash(&tip) == hash(&balance["block"]) && height(&tip) == height(&balance["block"])
+    let canonical = body(&e["block"]); let included = canonical["deploys"].as_array().is_some_and(|ds| ds.iter().any(|d| d["sig"] == deploy_id && d["errored"] == false));
+    included && !canonical_contradiction(o) && !e["finalized_block"].is_null() && bool_result(&deploy["ProcessedWithSuccess"]["deployResult"]) == Some(true) && finalized(&body(&e["is_finalized"])) && balance_value(&balance).is_some() && hash(&tip).is_some() && hash(&tip) == hash(&balance["block"]) && height(&tip) == height(&balance["block"])
 }
 fn ancestor(high: &Value, target: &str) -> bool {
     let e = &high["evidence"]; let mut pending = vec![body(&e["finalized_block"])]; let mut seen = std::collections::HashSet::new();
@@ -97,7 +100,7 @@ pub fn package(deploy: &str, mut observers: Vec<Value>, generated_at: u64, revis
     let mut stage = json!({"status": if included {"OBSERVED"} else {"UNKNOWN"}});
     if included { let b=block.unwrap(); stage["block_hash"]=json!(hash(b)); stage["block_height"]=json!(height(b)); stage["observed_at"]=first["evidence"]["deploy"]["observed_at"].clone(); }
     let mut execution_stage=stage.clone(); execution_stage["status"]=json!(execution);
-    let finalized_state = if agreement == "CONFLICT" {json!({"status":"CONFLICT", "reason":"Conflicting finalized or canonical evidence"})} else if let Some(o) = observers.iter().find(|o| has_readback(o)) {json!({"status":"OBSERVED","observed_at":o["evidence"]["balance"]["observed_at"],"finalized_block_hash":o["finalized_hash"],"finalized_block_height":o["finalized_height"]})} else {json!({"status":"UNAVAILABLE", "reason":"Finalized transfer read-back not observed"})};
+    let finalized_state = if agreement == "CONFLICT" {json!({"status":"CONFLICT", "reason":"Conflicting finalized or canonical evidence"})} else if let Some(o) = observers.iter().find(|o| has_readback(o, deploy)) {json!({"status":"OBSERVED","observed_at":o["evidence"]["balance"]["observed_at"],"finalized_block_hash":o["finalized_hash"],"finalized_block_height":o["finalized_height"]})} else {json!({"status":"UNAVAILABLE", "reason":"Finalized transfer read-back not observed"})};
     for o in &mut observers { let mut copy=o.clone(); copy.as_object_mut().unwrap().remove("observation_digest"); o["observation_digest"]=json!(digest(&copy)); }
     let summaries: Vec<Value> = observers.iter().cloned().map(|mut o| { let m=o.as_object_mut().unwrap(); m.remove("evidence"); m.remove("observation_digest"); o }).collect();
     let agreement = json!({"status":agreement});
@@ -129,7 +132,7 @@ mod tests {
     const NOW:u64=1792080001000;
     #[test] fn same_height_different_hash_is_conflict() {let mut o=fixture();o[1]["finalized_hash"]=json!("other");assert_eq!(agreement(&o,NOW),"CONFLICT");}
     #[test] fn valid_parent_path_proves_lag() {let mut o=fixture();let low=o[0]["finalized_hash"].clone();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);b["blockInfo"]["parents"]=json!([low]);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"PROVEN_LAG");}
-    #[test] fn unresolved_height_is_skew() {let mut o=fixture();o[1]["finalized_height"]=json!(11);assert_eq!(agreement(&o,NOW),"HEIGHT_SKEW");}
+    #[test] fn unresolved_height_is_skew() {let mut o=fixture();let mut b=body(&o[1]["evidence"]["finalized_block"]);b["blockInfo"]["blockHash"]=json!("new");b["blockInfo"]["blockNumber"]=json!(11);o[1]["finalized_height"]=json!(11);o[1]["finalized_hash"]=json!("new");replace_raw(&mut o[1]["evidence"]["finalized"],b.clone());replace_raw(&mut o[1]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"HEIGHT_SKEW");}
     #[test] fn unavailable_required_observer_is_insufficient() {let mut o=fixture();o[1]["status"]=json!("UNAVAILABLE");assert_eq!(agreement(&o,NOW),"INSUFFICIENT_EVIDENCE");}
     #[test] fn stale_cannot_agree() {let o=fixture();assert_eq!(agreement(&o,NOW+60_000),"INSUFFICIENT_EVIDENCE");}
     #[test] fn canonical_mismatch_is_contradiction() {let mut o=fixture();let mut b=body(&o[0]["evidence"]["finalized_block"]);b["blockInfo"]["postStateHash"]=json!("tamper");replace_raw(&mut o[0]["evidence"]["finalized_block"],b);assert_eq!(agreement(&o,NOW),"CONFLICT");}
