@@ -38,6 +38,24 @@ impl RNodeClient {
         Self::parse_finalized_bool(&raw).ok_or_else(|| "is-finalized response did not contain a boolean finality value".to_string())
     }
 
+    /// Exact response bytes for assurance; fixed callers supply paths, never client-supplied URLs.
+    pub async fn assurance_raw(&self, path: &str, request: Option<&str>) -> Result<Value, String> {
+        let url = format!("{}{}", self.base_url, path);
+        let builder = match request { Some(term) => self.client.post(&url).json(term), None => self.client.get(&url) };
+        let mut response = builder.timeout(std::time::Duration::from_secs(8)).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() { return Err(format!("{} returned HTTP {}", path, response.status())); }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+            if bytes.len() + chunk.len() > 2_000_000 { return Err("assurance response exceeds 2 MB".into()); }
+            bytes.extend_from_slice(&chunk);
+        }
+        let body = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+        serde_json::from_str::<Value>(&body).map_err(|e| e.to_string())?;
+        let mut raw = serde_json::json!({"path": path, "body": body, "digest": format!("{:x}", Sha256::digest(body.as_bytes())), "observed_at": crate::assurance::now_ms()});
+        if let Some(term) = request { raw["request"] = serde_json::json!(term); }
+        Ok(raw)
+    }
+
     async fn get_json(&self, path: &str) -> Result<Value, String> {
         let url = format!("{}{}", self.base_url, path);
         let response = self.client.get(&url).send().await.map_err(|error| error.to_string())?;
