@@ -71,7 +71,7 @@ fn canonical_contradiction(o: &Value) -> bool {
     let tip=body(&e["finalized"]);
     if !e["finalized"].is_null() && (json!(hash(&tip)) != o["finalized_hash"] || json!(height(&tip)) != o["finalized_height"]) { return true; }
     let balance=body(&e["balance"]);
-    if hash(&tip).is_some() && hash(&balance["block"]) == hash(&tip) && protocol_matches(&tip, &balance["block"]) == Some(true) == Some(false) { return true; }
+    if hash(&tip).is_some() && hash(&balance["block"]) == hash(&tip) && protocol_matches(&tip, &balance["block"]) == Some(false) { return true; }
     let d = body(&e["deploy"]);
     let b = d["ProcessedWithSuccess"].get("block").or_else(|| d["ProcessedWithError"].get("block"));
     (!e["finalized"].is_null() && !e["finalized_block"].is_null() && protocol_matches(&body(&e["finalized"]), &body(&e["finalized_block"])) == Some(false)) || b.is_some_and(|b| !e["block"].is_null() && protocol_matches(b, &body(&e["block"])) == Some(false))
