@@ -346,3 +346,15 @@ Apache License 2.0
 ## Assurance fabric role
 
 Sentinel is the **observation/transport verification boundary** in the v1 assurance fabric. `POST /api/assurance/repair/observe` accepts `causal-assurance-repair-propagation/v1`, validates schema/provenance/digest syntax and the native-replay flag, and emits a deterministic observation digest. Acceptance is evidence transport only; it is not an independent Casper finality or protocol-safety proof.
+
+### Offline incident witness gate
+
+The [Sentinel Witness Gate](docs/SENTINEL_WITNESS_GATE.md) consumes bounded,
+read-only JSONL from Rholo incident snapshots, producing a deterministic
+witness packet for review. It separates unavailable endpoints, reported
+finalized-height progress, conflicting reported finalized identities, stale
+health data, and correlated host-failure scenarios. Reports can be recomputed
+from raw capture bytes and an optional externally pinned SHA-256.
+
+This is operational observation only; it does not assert authenticated
+Casper CBC finality, independent hosts, OOM kills, or finalized-write loss.

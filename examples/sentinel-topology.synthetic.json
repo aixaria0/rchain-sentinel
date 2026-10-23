@@ -1,0 +1,21 @@
+{
+  "schema": "sentinel-observation-topology/v1",
+  "validators": {
+    "A": {
+      "host": "hostOne",
+      "stake": 250
+    },
+    "D": {
+      "host": "hostOne",
+      "stake": 250
+    },
+    "B": {
+      "host": "hostTwo",
+      "stake": 250
+    },
+    "C": {
+      "host": "hostTwo",
+      "stake": 250
+    }
+  }
+}
