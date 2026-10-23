@@ -1,0 +1,6 @@
+# Local incident reports and Python test caches
+__pycache__/
+*.py[cod]
+.local-witness-*.json
+incident-observations*.jsonl
+incident-witness*.json

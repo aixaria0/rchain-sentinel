@@ -1,0 +1,35 @@
+name: Sentinel witness gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test offline parser and counterfactuals
+        run: python3 -m unittest discover -s tools/tests -v
+      - name: Run pinned synthetic witness check
+        run: |
+          python3 tools/sentinel_witness_gate.py examples/sentinel-incident.synthetic.jsonl --topology examples/sentinel-topology.synthetic.json --output /tmp/sentinel-witness.json
+          python3 tools/sentinel_witness_gate.py examples/sentinel-incident.synthetic.jsonl --topology examples/sentinel-topology.synthetic.json --verify-report /tmp/sentinel-witness.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/sentinel-witness.json', encoding='utf-8') as stream:
+              report = json.load(stream)
+          analysis = report['analysis']
+          assert analysis['assessment'] == 'INSUFFICIENT_FINALITY_OBSERVATION'
+          assert analysis['protocol_finality_proven'] is False
+          assert all(not case['illustrative_gt_two_thirds_remaining'] for case in analysis['host_failure_counterfactuals']['one_host_failure_scenarios'])
+          PY
